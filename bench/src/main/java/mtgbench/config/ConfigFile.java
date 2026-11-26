@@ -31,6 +31,8 @@ public class ConfigFile {
     public Boolean checkLegality;
     public Double maxErrorRate;
     public Boolean gameLogs;
+    public Double targetCi;
+    public Integer maxGames;
 
     public static class Opponent {
         public String path;

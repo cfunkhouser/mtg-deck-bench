@@ -54,6 +54,15 @@ public final class RunCommand implements Callable<Integer> {
             + BenchConfig.DEFAULT_GAMES + ").")
     Integer games;
 
+    @Option(names = "--target-ci", paramLabel = "HALF_WIDTH",
+            description = "Keep adding games until every matchup's 95%% CI is within ±HALF_WIDTH, e.g. 0.05 for "
+                    + "±5 percentage points. --games is then the first batch.")
+    Double targetCi;
+
+    @Option(names = "--max-games", description = "With --target-ci: stop a matchup at this many games even if its CI "
+            + "is still wider (pod: games in total; default: what a 50%% matchup needs, plus 25%%).")
+    Integer maxGames;
+
     @Option(names = {"-t", "--threads"}, description = "Games played at once (default: number of CPUs).")
     Integer threads;
 
@@ -170,6 +179,34 @@ public final class RunCommand implements Callable<Integer> {
                 gameCount = rounded;
             }
         }
+        BenchConfig.Adaptive adaptive = null;
+        Double ci = first(targetCi, file.targetCi);
+        Integer cap = first(maxGames, file.maxGames);
+        if (ci == null && cap != null) {
+            throw new ParameterException(spec.commandLine(), "--max-games only applies with --target-ci");
+        }
+        if (ci != null) {
+            int step = md == Mode.POD ? opps.size() + 1 : 2;
+            if (!(ci > 0 && ci < 0.5)) {
+                throw new ParameterException(spec.commandLine(),
+                        "--target-ci is a half-width between 0 and 0.5, e.g. 0.05 for ±5 percentage points");
+            }
+            if (cap == null) {
+                cap = Math.max(gameCount, BenchConfig.Adaptive.defaultMaxGames(ci, step));
+            } else if (md == Mode.POD) {
+                int rounded = BenchConfig.Adaptive.roundUp(cap, step);
+                if (rounded != cap) {
+                    System.out.printf("Note: --max-games %d rounded up to %d so every seat is played equally often.%n",
+                            cap, rounded);
+                    cap = rounded;
+                }
+            }
+            try {
+                adaptive = new BenchConfig.Adaptive(ci, cap);
+            } catch (IllegalArgumentException e) {
+                throw new ParameterException(spec.commandLine(), e.getMessage());
+            }
+        }
         int thr = deterministic ? 1 : first(threads, file.threads, Runtime.getRuntime().availableProcessors());
         if (deterministic && threads != null && threads != 1) {
             throw new ParameterException(spec.commandLine(), "--deterministic plays one game at a time; drop --threads");
@@ -194,7 +231,8 @@ public final class RunCommand implements Callable<Integer> {
                     !noLegalityCheck && first(null, file.checkLegality, true),
                     first(maxErrorRate, file.maxErrorRate, BenchConfig.DEFAULT_MAX_ERROR_RATE),
                     gameLogs || first(null, file.gameLogs, false),
-                    shard != null ? BenchConfig.Shard.parse(shard) : null);
+                    shard != null ? BenchConfig.Shard.parse(shard) : null,
+                    adaptive);
         } catch (IllegalArgumentException e) {
             throw new ParameterException(spec.commandLine(), e.getMessage());
         }

@@ -196,4 +196,21 @@ class AggregatorTest {
         assertEquals(1, s.matchups().get(0).timeouts());
         assertEquals(0.25, s.timeoutRate(), 1e-9);
     }
+
+    @Test
+    void adaptiveLineInTheReport() {
+        Summary s = Aggregator.gauntlet("r", "T", List.of("B0", "B1"), List.of(1.0, 1.0), games(0, 6, 4, 0, 0, 0));
+        assertNull(s.adaptive());
+        assertFalse(mtgbench.report.Reports.table(s, true).contains("Adaptive"));
+
+        String done = mtgbench.report.Reports.table(
+                s.withAdaptive(new Summary.AdaptiveSummary(0.05, 480, true, List.of())), false);
+        assertTrue(done.contains("stopped when every 95% CI was within ±5.0%"), done);
+        String capped = mtgbench.report.Reports.table(
+                s.withAdaptive(new Summary.AdaptiveSummary(0.05, 480, true, List.of("B1"))), true);
+        assertTrue(capped.contains("except B1, which reached the cap of 480 games first"), capped);
+        String open = mtgbench.report.Reports.table(
+                s.withAdaptive(new Summary.AdaptiveSummary(0.05, 480, false, List.of())), false);
+        assertTrue(open.contains("unfinished"), open);
+    }
 }

@@ -1,0 +1,71 @@
+# Development toolchain and tasks. See https://mise.en.dev/
+#   mise install          # install the pinned tools
+#   mise run setup        # fetch, patch and install Forge (once, a few minutes)
+#   mise run test         # full test suite
+#   mise tasks            # list all tasks
+#
+# Keep the JDK and Maven lines in step with docker/Dockerfile (maven:3.9-eclipse-temurin-17,
+# eclipse-temurin:17-jre). Exact versions and checksums are recorded in mise.lock.
+
+min_version = "2026.11.14"
+
+[settings]
+lockfile = true
+
+[tools]
+java = "temurin-17.0.21.1+2"
+maven = "3.9.16"
+actionlint = "1.7.12"
+
+# ---- Setup ------------------------------------------------------------------------------------
+
+[tasks.setup]
+description = "Install pinned tools, then fetch, patch and install Forge into ~/.m2"
+run = ["mise install", "scripts/build-forge.sh"]
+
+[tasks."forge:build"]
+description = "Patch the Forge submodule (idempotent) and install it into ~/.m2"
+run = "scripts/build-forge.sh"
+
+# ---- Build and test ---------------------------------------------------------------------------
+
+[tasks.build]
+description = "Compile the harness"
+run = "mvn -B -q -f bench/pom.xml compile"
+
+[tasks.test]
+description = "Run unit and Forge-backed tests (mvn verify, about 2 minutes)"
+run = "mvn -B -f bench/pom.xml verify"
+
+[tasks.lint]
+description = "Lint the GitHub Actions workflows"
+run = "actionlint"
+
+[tasks.ci]
+description = "Everything the CI test job runs"
+depends = ["lint", "test"]
+
+[tasks.clean]
+description = "Remove harness build output"
+run = "mvn -B -q -f bench/pom.xml clean"
+
+# ---- Run from a checkout ----------------------------------------------------------------------
+
+[tasks.mtgbench]
+description = "Run the mtgbench CLI; arguments are passed through (mise run mtgbench -- run --help)"
+run = "scripts/mtgbench"
+
+[tasks.validate]
+description = "Validate the example decks"
+run = "scripts/mtgbench validate examples/decks/*.txt examples/decks/commander/*.txt"
+
+# ---- Container --------------------------------------------------------------------------------
+
+[tasks."docker:build"]
+description = "Build the container image (tag: mtgbench)"
+run = "docker build -f docker/Dockerfile -t mtgbench ."
+
+[tasks.smoke]
+description = "Build the image and run the smoke test against it (about a minute)"
+depends = ["docker:build"]
+run = "scripts/smoke-test.sh mtgbench"

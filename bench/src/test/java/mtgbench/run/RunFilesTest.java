@@ -35,7 +35,7 @@ class RunFilesTest {
         return new BenchConfig(BenchConfig.Mode.GAUNTLET, Format.COMMANDER, 10,
                 new DeckRef(Path.of("/decks/t.txt"), 1.0),
                 List.of(new DeckRef(Path.of("/decks/a.txt"), 0.3), new DeckRef(Path.of("/decks/b.dck"), 0.7)),
-                null, 20, 600, seed, threads, Path.of("/results"), true, 0.05, false, shard);
+                null, 20, 600, seed, threads, Path.of("/results"), true, 0.05, false, shard, null);
     }
 
     static RunManifest manifest(String runId, Shard shard, long seed, String hashB) {
@@ -58,6 +58,25 @@ class RunFilesTest {
         m.write(dir);
         assertEquals(m, RunManifest.read(dir));
         assertTrue(Files.readString(dir.resolve(RunManifest.FILE)).contains("/decks/a.txt"), "paths stay plain");
+    }
+
+    @Test
+    void adaptiveSettingsRoundTripAndOldManifestsReadWithout() throws IOException {
+        RunManifest plain = manifest("run1", null, 7, "h3");
+        RunManifest m = new RunManifest("run1", plain.mtgbenchVersion(), plain.forgeVersion(),
+                new BenchConfig(plain.config().mode(), plain.config().format(), 10, plain.config().target(),
+                        plain.config().opponents(), null, 20, 600, 7, 2, Path.of("/results"), true, 0.05, false, null,
+                        new BenchConfig.Adaptive(0.05, 480)),
+                plain.decks());
+        m.write(dir);
+        assertEquals(m, RunManifest.read(dir));
+
+        // A manifest written before adaptive runs existed has no 'adaptive' key at all.
+        Path file = dir.resolve(RunManifest.FILE);
+        String old = Files.readString(file).replaceAll("(?ms)^  adaptive:.*?(?=^  \\S|^\\S|\\z)", "");
+        assertTrue(!old.contains("adaptive"), old);
+        Files.writeString(file, old);
+        assertNull(RunManifest.read(dir).config().adaptive());
     }
 
     @Test
@@ -120,6 +139,13 @@ class RunFilesTest {
         assertNull(MergeCommandAccess.incompatibility(a, manifest("b", new Shard(1, 2), 7, "h3")));
         assertNotNull(MergeCommandAccess.incompatibility(a, manifest("b", new Shard(1, 2), 8, "h3")), "seed");
         assertNotNull(MergeCommandAccess.incompatibility(a, manifest("b", new Shard(1, 2), 7, "other")), "deck file");
+        RunManifest fixed = manifest("a", null, 7, "h3");
+        RunManifest adaptive = new RunManifest("b", fixed.mtgbenchVersion(), fixed.forgeVersion(),
+                new BenchConfig(fixed.config().mode(), fixed.config().format(), fixed.config().games(),
+                        fixed.config().target(), fixed.config().opponents(), null, 20, 600, 7, 2, Path.of("/results"),
+                        true, 0.05, false, null, new BenchConfig.Adaptive(0.05, 480)),
+                fixed.decks());
+        assertNotNull(MergeCommandAccess.incompatibility(fixed, adaptive), "target CI");
 
         GameRecord g = game(3, GameRecord.WIN, 10);
         GameRecord sameOtherRun = new GameRecord("other", 3, g.mode(), g.format(), g.matchup(), g.matchupName(),

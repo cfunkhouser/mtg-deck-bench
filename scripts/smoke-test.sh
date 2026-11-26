@@ -5,9 +5,18 @@ set -euo pipefail
 image=${1:?usage: smoke-test.sh IMAGE}
 data=$(mktemp -d)
 chmod 777 "$data"   # the image runs as a non-root user
-trap 'rm -rf "$data"' EXIT
 decks=/opt/mtgbench/examples/decks
 run() { docker run --rm --network none -v "$data:/data" "$image" "$@"; }
+cleanup() {
+    local status=$?
+    # The container writes as its own user (uid 10001). On Linux the host user can't delete those
+    # files, so remove them from a container running as root, and never let cleanup change the result.
+    docker run --rm --network none -v "$data:/data" --user 0 --entrypoint find "$image" /data -mindepth 1 -delete \
+        >/dev/null 2>&1 || true
+    rm -rf "$data" 2>/dev/null || echo "note: could not remove $data" >&2
+    exit "$status"
+}
+trap cleanup EXIT
 fail() { echo "SMOKE TEST FAILED: $*" >&2; exit 1; }
 
 echo "== version"

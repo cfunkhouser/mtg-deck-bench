@@ -136,10 +136,29 @@ public final class Reports {
             gauntletTable(s, sb, markdown);
         }
         commanderTable(s, sb, markdown);
+        adaptiveLine(s, sb, markdown);
         sb.append(markdown ? "\n" : "").append("Overall: ").append(s.gamesPlayed()).append(" games, win rate ")
           .append(rateWithCi(s.overall())).append(", timeouts ").append(pctOf(s.timeoutRate()))
           .append(", errors ").append(pctOf(s.errorRate())).append("\n");
         return finishTable(s, sb, markdown);
+    }
+
+    private static void adaptiveLine(Summary s, StringBuilder sb, boolean markdown) {
+        Summary.AdaptiveSummary a = s.adaptive();
+        if (a == null) {
+            return;
+        }
+        String target = "±" + pctOf(a.targetCi());
+        sb.append(markdown ? "\n" : "").append("Adaptive game count: ");
+        if (!a.finished()) {
+            sb.append("unfinished, still playing toward a 95% CI of ").append(target);
+        } else if (a.capped().isEmpty()) {
+            sb.append("stopped when every 95% CI was within ").append(target);
+        } else {
+            sb.append("stopped at ").append(target).append(", except ").append(String.join(", ", a.capped()))
+              .append(", which reached the cap of ").append(a.maxGames()).append(" games first");
+        }
+        sb.append("\n");
     }
 
     private static void gauntletTable(Summary s, StringBuilder sb, boolean markdown) {

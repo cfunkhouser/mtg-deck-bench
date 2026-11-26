@@ -23,13 +23,13 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions/setup-java@v4
+      # JDK, Maven and actionlint come from mise.toml / mise.lock, the same versions as locally.
+      - uses: jdx/mise-action@v5
         with:
-          distribution: temurin
-          java-version: "17"
+          version: 2026.11.14
 
-      - name: Ensure Maven
-        run: command -v mvn || { sudo apt-get update -q && sudo apt-get install -y -q maven; }
+      - name: Lint workflows
+        run: mise run lint
 
       - name: Forge commit
         id: forge
@@ -41,16 +41,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository
-          key: m2-${{ steps.forge.outputs.sha }}-${{ hashFiles('patches/forge/**', 'scripts/build-forge.sh', 'bench/pom.xml') }}
+          key: m2-${{ steps.forge.outputs.sha }}-${{ hashFiles('patches/forge/**', 'scripts/build-forge.sh', 'bench/pom.xml', 'mise.lock') }}
           restore-keys: |
             m2-${{ steps.forge.outputs.sha }}-
 
       - name: Build patched Forge
         if: steps.m2.outputs.cache-hit != 'true'
-        run: scripts/build-forge.sh
+        run: mise run forge:build
 
       - name: Test
-        run: mvn -B -f bench/pom.xml verify
+        run: mise run test
 
       - name: Upload test reports
         if: failure()

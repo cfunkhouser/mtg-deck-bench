@@ -19,14 +19,18 @@ To check a built image: `scripts/smoke-test.sh mtgbench` (about a minute). CI ru
 
 ## From a checkout
 
-Needs JDK 17+, Maven and git.
+Tools are pinned with [mise](https://mise.en.dev/) in `mise.toml` (Temurin 17, Maven, actionlint;
+exact versions and checksums in `mise.lock`). With mise installed and activated in your shell:
 
 ```bash
-git submodule update --init --depth 1
-scripts/build-forge.sh            # patch and install the pinned Forge (a few minutes, once)
-scripts/mtgbench validate examples/decks/*.txt
+mise trust && mise run setup     # install the pinned tools, then patch and install Forge (a few minutes, once)
+mise run test                    # unit and Forge-backed tests
+mise run validate                # validate the example decks
 scripts/mtgbench run -T examples/decks/mono-red-burn.txt -O examples/decks/mono-green-stompy.txt -n 100
 ```
+
+`mise tasks` lists the rest (`lint`, `ci`, `docker:build`, `smoke`, …). The tasks wrap the scripts in
+`scripts/`, which still work without mise given JDK 17+, Maven 3.8.1+ and git on the PATH.
 
 `--mode pod` puts the target and all opponents at one free-for-all table instead (at least two
 opponents; `-n` is then the total number of games). The target sits in every seat equally often, and
@@ -64,6 +68,10 @@ To spread a run over several machines, give each the same command plus `--shard 
 ```bash
 scripts/mtgbench merge results/<shard run 1> results/<shard run 2> ... --out results/merged
 ```
+
+Not sure how many games you need? `--target-ci 0.05` keeps adding games until every matchup's 95% CI is
+within ±5 percentage points. `-n` is then the first batch, and `--max-games` caps each matchup. Lopsided matchups
+stop early, and close ones keep going. The summary says which matchups, if any, hit the cap first.
 
 Add `--deterministic` (one game at a time) when you need every game to be reproducible, for example
 for `replay`. Without it, runs use all CPUs: the totals are valid, but single games can't be replayed

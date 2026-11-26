@@ -6,16 +6,20 @@ WORKDIR /src
 # git is used by build-forge.sh to apply patches (works without a repository).
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git >/dev/null && rm -rf /var/lib/apt/lists/*
 
+# Maven's local repository lives in the image layers, not in a BuildKit cache mount: build-forge.sh
+# installs the patched Forge there, and a cache mount's contents aren't exported with the layer cache
+# (e.g. type=gha in CI). A build-forge layer restored from cache would then come back without Forge.
+ENV MAVEN_ARGS="-Dmaven.repo.local=/src/.m2"
+
 COPY forge/ forge/
 COPY patches/ patches/
 COPY scripts/build-forge.sh scripts/trim-res.sh scripts/
-RUN --mount=type=cache,target=/root/.m2 scripts/build-forge.sh
+RUN scripts/build-forge.sh
 # Card data without game modes, UI assets and other languages (~170 MB instead of ~470 MB).
 RUN scripts/trim-res.sh forge/forge-gui/res /out/res
 
 COPY bench/ bench/
-RUN --mount=type=cache,target=/root/.m2 \
-    cd bench && mvn -B -q package -DskipTests \
+RUN cd bench && mvn -B -q package -DskipTests \
     && mvn -B -q dependency:copy-dependencies -DincludeScope=runtime -DoutputDirectory=/out/lib \
     && cp target/mtgbench-*.jar /out/lib/
 
