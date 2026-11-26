@@ -50,7 +50,8 @@ public final class RunCommand implements Callable<Integer> {
             description = "Metagame weights for the opponents, in the same order (default: equal).")
     List<Double> weights;
 
-    @Option(names = {"-n", "--games"}, description = "Games per opponent (default: " + BenchConfig.DEFAULT_GAMES + ").")
+    @Option(names = {"-n", "--games"}, description = "Games per opponent; in pod mode, games in total (default: "
+            + BenchConfig.DEFAULT_GAMES + ").")
     Integer games;
 
     @Option(names = {"-t", "--threads"}, description = "Games played at once (default: number of CPUs).")
@@ -63,7 +64,8 @@ public final class RunCommand implements Callable<Integer> {
     @Option(names = "--seed", description = "Run seed (default: random; always recorded).")
     Long seed;
 
-    @Option(names = "--mode", description = "gauntlet (default) or pod.")
+    @Option(names = "--mode", description = "gauntlet (default: the target plays each opponent 1v1) or pod "
+            + "(the target and all opponents at one free-for-all table).")
     Mode mode;
 
     @Option(names = {"-f", "--format"}, description = "constructed (default) or commander.")
@@ -155,6 +157,19 @@ public final class RunCommand implements Callable<Integer> {
         }
 
         Format fmt = first(format, file.format, Format.CONSTRUCTED);
+        Mode md = first(mode, file.mode, Mode.GAUNTLET);
+        int gameCount = first(games, file.games, BenchConfig.DEFAULT_GAMES);
+        if (md == Mode.POD) {
+            if (opps.size() < 2) {
+                throw new ParameterException(spec.commandLine(), "pod mode needs at least two opponent decks");
+            }
+            int rounded = mtgbench.schedule.Scheduler.podGames(opps.size(), gameCount);
+            if (rounded != gameCount) {
+                System.out.printf("Note: %d games rounded up to %d so every seat is played equally often.%n",
+                        gameCount, rounded);
+                gameCount = rounded;
+            }
+        }
         int thr = deterministic ? 1 : first(threads, file.threads, Runtime.getRuntime().availableProcessors());
         if (deterministic && threads != null && threads != 1) {
             throw new ParameterException(spec.commandLine(), "--deterministic plays one game at a time; drop --threads");
@@ -165,9 +180,9 @@ public final class RunCommand implements Callable<Integer> {
 
         try {
             return new BenchConfig(
-                    first(mode, file.mode, Mode.GAUNTLET),
+                    md,
                     fmt,
-                    first(games, file.games, BenchConfig.DEFAULT_GAMES),
+                    gameCount,
                     new DeckRef(targetPath.toAbsolutePath(), 1.0),
                     opps,
                     first(aiProfile, file.ai != null ? file.ai.profile : null, null),

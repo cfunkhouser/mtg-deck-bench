@@ -13,6 +13,7 @@ import java.util.function.Predicate;
 import mtgbench.stats.Summary.CommanderStats;
 import mtgbench.stats.Summary.MatchupSummary;
 import mtgbench.stats.Summary.MulliganStats;
+import mtgbench.stats.Summary.PodSummary;
 import mtgbench.stats.Summary.Rate;
 
 /** Turns game records into a {@link Summary}. Pure functions: no Forge, no I/O. */
@@ -33,17 +34,7 @@ public final class Aggregator {
         for (int m = 0; m < opponentNames.size(); m++) {
             final int matchup = m;
             List<GameRecord> mg = games.stream().filter(g -> g.matchup() == matchup).toList();
-            int wins = count(mg, GameRecord.WIN), losses = count(mg, GameRecord.LOSS), draws = count(mg, GameRecord.DRAW);
-            int timeouts = count(mg, GameRecord.TIMEOUT), errors = count(mg, GameRecord.ERROR);
-            Double avgTurns = mg.stream().filter(Aggregator::decided).mapToInt(GameRecord::turns).average().stream()
-                    .boxed().findFirst().orElse(null);
-            boolean flagged = !mg.isEmpty() && (timeouts + errors) > FLAG_THRESHOLD * mg.size();
-            matchups.add(new MatchupSummary(m, opponentNames.get(m), weights.get(m), mg.size(), wins, losses, draws,
-                    timeouts, errors, rate(mg, g -> true),
-                    rate(mg, g -> g.targetPlayer().onPlay()), rate(mg, g -> !g.targetPlayer().onPlay()),
-                    avgTurns, flagged, commanderStats(mg), avgRounds(mg), mulliganStats(mg),
-                    reasons(mg, GameRecord.WIN), reasons(mg, GameRecord.LOSS),
-                    roundHistogram(mg, GameRecord.WIN), roundHistogram(mg, GameRecord.LOSS)));
+            matchups.add(matchup(m, opponentNames.get(m), weights.get(m), mg));
         }
 
         // Weighted score over matchups that have at least one decided game.
@@ -84,6 +75,66 @@ public final class Aggregator {
                 matchups);
     }
 
+    /**
+     * Pod: one table of {@code players} decks. Score = 100 × winShare × players / 2, capped at 100, so
+     * the fair share (1 / players) scores 50, like a 50% gauntlet win rate.
+     */
+    public static Summary pod(String runId, String target, List<String> opponentNames, Collection<GameRecord> games) {
+        int players = opponentNames.size() + 1;
+        List<GameRecord> all = List.copyOf(games);
+        MatchupSummary table = matchup(0, "the table (" + players + " players)", 1.0, all);
+
+        Rate share = rate(all, g -> true);
+        List<Rate> bySeat = new ArrayList<>();
+        for (int seat = 0; seat < players; seat++) {
+            final int s = seat;
+            bySeat.add(rate(all, g -> g.targetPlayer().seat() == s));
+        }
+        SortedMap<Integer, Integer> placements = new TreeMap<>();
+        int placed = 0, placeSum = 0;
+        Map<String, Integer> deckWins = new LinkedHashMap<>();
+        deckWins.put(target, 0);
+        opponentNames.forEach(n -> deckWins.put(n, 0));
+        Map<String, Integer> eliminatedBy = new HashMap<>();
+        Map<String, Integer> winnerWhenLost = new HashMap<>();
+        for (GameRecord g : all) {
+            if (!decided(g)) {
+                continue;
+            }
+            Integer place = g.targetPlayer().placement();
+            if (place != null) {
+                placements.merge(place, 1, Integer::sum);
+                placed++;
+                placeSum += place;
+            }
+            if (g.winnerSeat() != null) {
+                String winner = g.players().get(g.winnerSeat()).deck();
+                deckWins.merge(winner, 1, Integer::sum);
+                if (g.outcome().equals(GameRecord.LOSS)) {
+                    winnerWhenLost.merge(winner, 1, Integer::sum);
+                }
+            }
+            Integer by = g.targetPlayer().eliminatedBySeat();
+            if (by != null) {
+                eliminatedBy.merge(g.players().get(by).deck(), 1, Integer::sum);
+            }
+        }
+
+        Double score = null, half = null;
+        if (share.rate() != null) {
+            score = Math.min(100.0, 100 * share.rate() * players / 2.0);
+            half = 100 * (share.ciHigh() - share.ciLow()) / 2 * players / 2.0;
+        }
+        int n = all.size();
+        PodSummary pod = new PodSummary(players, share, 1.0 / players,
+                placed > 0 ? (double) placeSum / placed : null, placements, bySeat, deckWins,
+                sortedByCount(eliminatedBy), sortedByCount(winnerWhenLost));
+        return new Summary(runId, target, n, share, score, half, null, null,
+                n == 0 ? 0 : (double) count(all, GameRecord.TIMEOUT) / n,
+                n == 0 ? 0 : (double) count(all, GameRecord.ERROR) / n,
+                List.of(table), pod);
+    }
+
     /** Round in which a game ended: Forge turns spread over the players at the table. */
     public static int round(GameRecord g) {
         int players = Math.max(1, g.players().size());
@@ -122,7 +173,9 @@ public final class Aggregator {
             if (outcome.equals(GameRecord.LOSS)) {
                 reason = g.targetPlayer().lossReason();
             } else {
+                // Multiplayer: how the last opponent standing went out (placement 2).
                 reason = g.players().stream().filter(p -> !p.target() && p.lossReason() != null)
+                        .filter(p -> p.placement() == null || p.placement() == 2)
                         .map(GameRecord.PlayerRecord::lossReason).findFirst().orElse(null);
             }
             counts.merge(reason != null ? reason : "Unknown", 1, Integer::sum);
@@ -174,6 +227,28 @@ public final class Aggregator {
         int n = decided.size();
         return new CommanderStats(winsByCd, lossesByCd, (double) castGames / n, (double) casts / n,
                 castGames > 0 ? (double) firstSum / castGames : null);
+    }
+
+    static MatchupSummary matchup(int m, String opponent, double weight, List<GameRecord> mg) {
+        int wins = count(mg, GameRecord.WIN), losses = count(mg, GameRecord.LOSS), draws = count(mg, GameRecord.DRAW);
+        int timeouts = count(mg, GameRecord.TIMEOUT), errors = count(mg, GameRecord.ERROR);
+        Double avgTurns = mg.stream().filter(Aggregator::decided).mapToInt(GameRecord::turns).average().stream()
+                .boxed().findFirst().orElse(null);
+        boolean flagged = !mg.isEmpty() && (timeouts + errors) > FLAG_THRESHOLD * mg.size();
+        return new MatchupSummary(m, opponent, weight, mg.size(), wins, losses, draws,
+                timeouts, errors, rate(mg, g -> true),
+                rate(mg, g -> g.targetPlayer().onPlay()), rate(mg, g -> !g.targetPlayer().onPlay()),
+                avgTurns, flagged, commanderStats(mg), avgRounds(mg), mulliganStats(mg),
+                reasons(mg, GameRecord.WIN), reasons(mg, GameRecord.LOSS),
+                roundHistogram(mg, GameRecord.WIN), roundHistogram(mg, GameRecord.LOSS));
+    }
+
+    private static Map<String, Integer> sortedByCount(Map<String, Integer> counts) {
+        Map<String, Integer> sorted = new LinkedHashMap<>();
+        counts.entrySet().stream()
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
+                .forEach(e -> sorted.put(e.getKey(), e.getValue()));
+        return sorted;
     }
 
     static boolean decided(GameRecord g) {

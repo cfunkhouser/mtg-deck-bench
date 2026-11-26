@@ -43,4 +43,35 @@ class SchedulerTest {
         assertEquals(-4767286540954276203L, Scheduler.gameSeed(42, 0));
         assertEquals(2949826092126892291L, Scheduler.gameSeed(42, 1));
     }
+
+    @Test
+    void podBalancesSeatsAndNeighbours() {
+        int opponents = 3, players = 4;
+        List<GameSpec> specs = Scheduler.pod(opponents, players * opponents * 2, 11);   // two full blocks
+        int[] targetSeats = new int[players];
+        int[] after = new int[opponents + 1], before = new int[opponents + 1];
+        for (GameSpec s : specs) {
+            assertEquals(0, s.startingSeat());
+            assertEquals(Set.of(0, 1, 2, 3), new HashSet<>(s.seatDecks()), "every deck seated once");
+            int t = s.targetSeat();
+            targetSeats[t]++;
+            after[s.seatDecks().get((t + 1) % players)]++;
+            before[s.seatDecks().get((t + players - 1) % players)]++;
+        }
+        for (int seat = 0; seat < players; seat++) {
+            assertEquals(6, targetSeats[seat], "target in seat " + seat);
+        }
+        for (int o = 1; o <= opponents; o++) {
+            assertEquals(8, after[o], "opponent " + o + " right after the target");
+            assertEquals(8, before[o], "opponent " + o + " right before the target");
+        }
+    }
+
+    @Test
+    void podSeatsBalancedInEveryBlockOfTableSize() {
+        List<GameSpec> specs = Scheduler.pod(2, 6, 1);
+        assertEquals(List.of(0, 1, 2, 0, 1, 2), specs.stream().map(GameSpec::targetSeat).toList());
+        assertEquals(9, Scheduler.podGames(2, 7));
+        assertEquals(9, Scheduler.podGames(2, 9));
+    }
 }

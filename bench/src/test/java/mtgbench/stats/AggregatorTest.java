@@ -157,4 +157,43 @@ class AggregatorTest {
         assertEquals(1, Aggregator.round(detailed(GameRecord.WIN, 2, 0, 0, null, null)));
         assertEquals(2, Aggregator.round(detailed(GameRecord.WIN, 3, 0, 0, null, null)));
     }
+
+    private static GameRecord podGame(int targetSeat, Integer winnerSeat, int[] placement, Integer targetEliminatedBy) {
+        String[] decks = {"A", "B", "C"};
+        List<PlayerRecord> players = new ArrayList<>();
+        for (int seat = 0; seat < 3; seat++) {
+            boolean target = seat == targetSeat;
+            String deck = target ? "T" : decks[seat];
+            Integer place = placement == null ? null : placement[seat];
+            String loss = winnerSeat != null && seat != winnerSeat ? "LifeReachedZero" : null;
+            players.add(new PlayerRecord(seat, deck, target, seat == 0, 0, 0, loss, null, null, null,
+                    place, loss != null ? 5 : null, target ? targetEliminatedBy : null));
+        }
+        String outcome = winnerSeat == null ? GameRecord.TIMEOUT : winnerSeat == targetSeat ? GameRecord.WIN : GameRecord.LOSS;
+        return new GameRecord("r", nextId++, "pod", "constructed", 0, "pod", 0, players, winnerSeat, outcome,
+                winnerSeat == null ? "turnCap" : null, 30, 100, "x", null);
+    }
+
+    @Test
+    void podSummary() {
+        List<GameRecord> all = List.of(
+                podGame(0, 0, new int[] {1, 3, 2}, null),        // T (seat 0) wins
+                podGame(1, 2, new int[] {3, 2, 1}, 2),           // T (seat 1) 2nd; C won, dealt last damage
+                podGame(2, 0, new int[] {1, 2, 3}, 0),           // T (seat 2) 3rd; A won
+                podGame(0, null, null, null));                   // timeout
+        Summary s = Aggregator.pod("r", "T", List.of("A", "C"), all);
+        Summary.PodSummary p = s.pod();
+        assertEquals(3, p.players());
+        assertEquals(1.0 / 3, p.winShare().rate(), 1e-9);
+        assertEquals(50.0, s.score(), 1e-9, "a third of the wins at a 3-player table is the fair share");
+        assertEquals(2.0, p.meanPlacement(), 1e-9);
+        assertEquals(java.util.Map.of(1, 1, 2, 1, 3, 1), p.placements());
+        assertEquals(1.0, p.bySeat().get(0).rate(), 1e-9);
+        assertEquals(0.0, p.bySeat().get(1).rate(), 1e-9);
+        assertEquals(1, p.deckWins().get("T"));
+        assertEquals(java.util.Map.of("C", 1, "A", 1), p.winnerWhenTargetLost());
+        assertEquals(1, s.matchups().size());
+        assertEquals(1, s.matchups().get(0).timeouts());
+        assertEquals(0.25, s.timeoutRate(), 1e-9);
+    }
 }

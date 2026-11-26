@@ -42,17 +42,32 @@ public record GameRecord(
      * @param commanderCasts          Commander only: times this player cast a commander
      * @param firstCommanderCastRound Commander only: round of the first cast (1 = everyone's first turn), or null
      * @param commanderDamageTaken    Commander only: most combat damage taken from any single commander
+     * @param placement               3+ players: finishing place (1 = winner); null for draws and timeouts
+     * @param eliminatedRound         3+ players: round in which this player lost
+     * @param eliminatedBySeat        3+ players: seat that dealt this player the last damage, when they
+     *                                lost to life or commander damage
      */
     public record PlayerRecord(int seat, String deck, boolean target, boolean onPlay, int mulligans,
                                Integer finalLife, String lossReason,
                                @JsonInclude(JsonInclude.Include.NON_NULL) Integer commanderCasts,
                                @JsonInclude(JsonInclude.Include.NON_NULL) Integer firstCommanderCastRound,
-                               @JsonInclude(JsonInclude.Include.NON_NULL) Integer commanderDamageTaken) {
+                               @JsonInclude(JsonInclude.Include.NON_NULL) Integer commanderDamageTaken,
+                               @JsonInclude(JsonInclude.Include.NON_NULL) Integer placement,
+                               @JsonInclude(JsonInclude.Include.NON_NULL) Integer eliminatedRound,
+                               @JsonInclude(JsonInclude.Include.NON_NULL) Integer eliminatedBySeat) {
 
         /** Constructed games: no commander fields. */
         public PlayerRecord(int seat, String deck, boolean target, boolean onPlay, int mulligans,
                             Integer finalLife, String lossReason) {
-            this(seat, deck, target, onPlay, mulligans, finalLife, lossReason, null, null, null);
+            this(seat, deck, target, onPlay, mulligans, finalLife, lossReason, null, null, null, null, null, null);
+        }
+
+        /** Two-player games: no multiplayer fields. */
+        public PlayerRecord(int seat, String deck, boolean target, boolean onPlay, int mulligans,
+                            Integer finalLife, String lossReason,
+                            Integer commanderCasts, Integer firstCommanderCastRound, Integer commanderDamageTaken) {
+            this(seat, deck, target, onPlay, mulligans, finalLife, lossReason, commanderCasts, firstCommanderCastRound,
+                    commanderDamageTaken, null, null, null);
         }
     }
 

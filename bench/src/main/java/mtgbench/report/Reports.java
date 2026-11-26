@@ -130,6 +130,19 @@ public final class Reports {
         if (markdown) {
             sb.append("# Benchmark: ").append(s.target()).append("\n\nRun `").append(s.runId()).append("`\n\n");
         }
+        if (s.pod() != null) {
+            podTables(s, sb, markdown);
+        } else {
+            gauntletTable(s, sb, markdown);
+        }
+        commanderTable(s, sb, markdown);
+        sb.append(markdown ? "\n" : "").append("Overall: ").append(s.gamesPlayed()).append(" games, win rate ")
+          .append(rateWithCi(s.overall())).append(", timeouts ").append(pctOf(s.timeoutRate()))
+          .append(", errors ").append(pctOf(s.errorRate())).append("\n");
+        return finishTable(s, sb, markdown);
+    }
+
+    private static void gauntletTable(Summary s, StringBuilder sb, boolean markdown) {
         if (s.score() != null) {
             sb.append(markdown ? "**Score: " : "Score: ").append(fmt1(s.score())).append(" ± ")
               .append(fmt1(s.scoreCiHalfWidth())).append(markdown ? "**" : "")
@@ -161,6 +174,47 @@ public final class Reports {
                 sb.append(String.format("%-28s %6s %6s %-11s %-11s %-22s %-8s %-8s %s%n", (Object[]) row));
             }
         }
+    }
+
+    private static void podTables(Summary s, StringBuilder sb, boolean markdown) {
+        Summary.PodSummary p = s.pod();
+        MatchupSummary t = s.matchups().get(0);
+        if (s.score() != null) {
+            sb.append(markdown ? "**Pod score: " : "Pod score: ").append(fmt1(s.score())).append(" ± ")
+              .append(fmt1(s.scoreCiHalfWidth())).append(markdown ? "**" : "")
+              .append("  (50 = the fair share of a ").append(p.players()).append("-player table, 95% CI)\n");
+        }
+        sb.append("Target won ").append(rateWithCi(p.winShare())).append(" of decided games (fair share ")
+          .append(pctOf(p.fairShare())).append("); ").append(t.wins()).append("-").append(t.losses()).append("-")
+          .append(t.draws()).append(" W-L-D, ").append(t.timeouts()).append(" timeouts, ").append(t.errors())
+          .append(" errors").append(t.avgRounds() == null ? "" : ", average round " + fmt1(t.avgRounds()))
+          .append(t.flagged() ? " ⚠" : "").append("\n");
+        if (p.meanPlacement() != null) {
+            List<String> places = new ArrayList<>();
+            p.placements().forEach((place, n) -> places.add(ordinal(place) + " " + n));
+            sb.append("Mean placement ").append(fmt2(p.meanPlacement())).append(" (").append(String.join(", ", places))
+              .append(")\n");
+        }
+        sb.append(markdown ? "\n| Target's seat (turn order) | Win rate |\n|---|---|\n" : "\nTarget win rate by seat (seat 1 goes first):\n");
+        for (int seat = 0; seat < p.bySeat().size(); seat++) {
+            String rate = rateWithN(p.bySeat().get(seat));
+            sb.append(markdown ? "| " + (seat + 1) + " | " + rate + " |\n" : String.format("  seat %d: %s%n", seat + 1, rate));
+        }
+        sb.append(markdown ? "\n| Deck | Wins |\n|---|---|\n" : "\nWins by deck:\n");
+        p.deckWins().forEach((deck, n) -> sb.append(markdown ? "| " + deck + " | " + n + " |\n"
+                : String.format("  %-28s %d%n", deck, n)));
+        if (!p.winnerWhenTargetLost().isEmpty() || !p.targetEliminatedBy().isEmpty()) {
+            sb.append(markdown ? "\n" : "").append("When the target lost, the winner was: ")
+              .append(reasonList(p.winnerWhenTargetLost())).append("\n");
+            sb.append("Last damage to the target came from: ").append(reasonList(p.targetEliminatedBy())).append("\n");
+        }
+    }
+
+    private static String ordinal(int n) {
+        return n + (n == 1 ? "st" : n == 2 ? "nd" : n == 3 ? "rd" : "th");
+    }
+
+    private static void commanderTable(Summary s, StringBuilder sb, boolean markdown) {
         if (s.matchups().stream().anyMatch(m -> m.commander() != null)) {
             sb.append(markdown ? "\n### Commander\n\n" : "\nCommander (target deck, decided games):\n");
             String[] ch = {"Opponent", "Wins by cmdr dmg", "Losses to cmdr dmg", "Cast commander", "Casts/game", "First cast (round)"};
@@ -184,9 +238,9 @@ public final class Reports {
                 }
             }
         }
-        sb.append(markdown ? "\n" : "").append("Overall: ").append(s.gamesPlayed()).append(" games, win rate ")
-          .append(rateWithCi(s.overall())).append(", timeouts ").append(pctOf(s.timeoutRate()))
-          .append(", errors ").append(pctOf(s.errorRate())).append("\n");
+    }
+
+    private static String finishTable(Summary s, StringBuilder sb, boolean markdown) {
         if (s.matchups().stream().anyMatch(MatchupSummary::flagged)) {
             sb.append("⚠ = more than 5% of that matchup's games hit a limit or failed; treat its numbers with care.\n");
         }

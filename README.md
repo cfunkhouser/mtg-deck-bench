@@ -28,6 +28,10 @@ scripts/mtgbench validate examples/decks/*.txt
 scripts/mtgbench run -T examples/decks/mono-red-burn.txt -O examples/decks/mono-green-stompy.txt -n 100
 ```
 
+`--mode pod` puts the target and all opponents at one free-for-all table instead (at least two
+opponents; `-n` is then the total number of games). The target sits in every seat equally often, and
+the report shows the win share against the fair share, mean placement and win rate by seat.
+
 Commander works the same way with `-f commander`:
 
 ```bash

@@ -25,6 +25,9 @@ set +e; run validate /data/bad.txt; code=$?; set -e
 echo "== constructed gauntlet: 10 games"
 run run -T $decks/mono-red-burn.txt -O $decks/mono-green-stompy.txt -O $decks/mono-white-humans.txt \
     -n 5 --seed 1 --deterministic -o /data/constructed
+echo "== constructed pod: 3 games at a 3-player table"
+run run --mode pod -T $decks/mono-red-burn.txt -O $decks/mono-green-stompy.txt -O $decks/mono-white-humans.txt \
+    -n 3 --seed 1 --deterministic -o /data/pod
 echo "== commander gauntlet: 4 games"
 run run -f commander -T $decks/commander/krenko-goblins.txt -O $decks/commander/ezuri-elves.txt \
     -n 4 --seed 1 --deterministic -o /data/commander
@@ -32,7 +35,7 @@ run run -f commander -T $decks/commander/krenko-goblins.txt -O $decks/commander/
 python3 - "$data" <<'PY'
 import glob, json, sys
 data = sys.argv[1]
-for name, expected in (("constructed", 10), ("commander", 4)):
+for name, expected in (("constructed", 10), ("commander", 4), ("pod", 3)):
     run_dir = glob.glob(f"{data}/{name}/*")[0]
     games = [json.loads(l) for l in open(f"{run_dir}/games.jsonl")]
     summary = json.load(open(f"{run_dir}/summary.json"))
@@ -41,6 +44,10 @@ for name, expected in (("constructed", 10), ("commander", 4)):
     bad = [g for g in games if g["outcome"] in ("error", "timeout")]
     assert not bad, f"{name}: {len(bad)} games failed or timed out: {bad[0]}"
     assert summary["gamesPlayed"] == expected and summary["score"] is not None, f"{name}: summary"
+    if name == "pod":
+        assert summary["pod"]["players"] == 3, "pod summary"
+        assert sorted(g["players"][[p["target"] for p in g["players"]].index(True)]["seat"] for g in games) == [0, 1, 2], \
+            "target sits in every seat"
     if name == "commander":
         assert all(p["commanderCasts"] is not None for g in games for p in g["players"]), "commander stats"
     print(f"{name}: {len(games)} games OK, score {summary['score']:.1f}")

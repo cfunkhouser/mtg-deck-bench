@@ -29,7 +29,34 @@ public record Summary(
         String worstMatchup,
         double timeoutRate,
         double errorRate,
-        List<MatchupSummary> matchups) {
+        List<MatchupSummary> matchups,
+        @JsonInclude(JsonInclude.Include.NON_NULL) PodSummary pod) {
+
+    /** Gauntlet summary (no pod section). */
+    public Summary(String runId, String target, int gamesPlayed, Rate overall, Double score, Double scoreCiHalfWidth,
+                   Double unweightedMean, String worstMatchup, double timeoutRate, double errorRate,
+                   List<MatchupSummary> matchups) {
+        this(runId, target, gamesPlayed, overall, score, scoreCiHalfWidth, unweightedMean, worstMatchup, timeoutRate,
+                errorRate, matchups, null);
+    }
+
+    /**
+     * Pod mode: the target and all opponents at one table. {@code matchups} then holds one entry for
+     * the whole table (mulligans, how games ended, game length, Commander figures).
+     *
+     * @param players         table size
+     * @param winShare        target wins over decided games (draws count half)
+     * @param fairShare       1 / players: what an average deck would win
+     * @param meanPlacement   target's average finishing place over games with a winner (1 = won)
+     * @param placements      how often the target finished 1st, 2nd, ...
+     * @param bySeat          target win rate by seat; seat 0 takes the first turn
+     * @param deckWins        wins per deck (target included), over decided games
+     * @param targetEliminatedBy who dealt the last damage when the target lost to life or commander damage
+     * @param winnerWhenTargetLost which deck won the games the target lost
+     */
+    public record PodSummary(int players, Rate winShare, double fairShare, Double meanPlacement,
+                             SortedMap<Integer, Integer> placements, List<Rate> bySeat, Map<String, Integer> deckWins,
+                             Map<String, Integer> targetEliminatedBy, Map<String, Integer> winnerWhenTargetLost) {}
 
     /** A win rate over some set of decided games, with a 95% Wilson interval. Null rate when n = 0. */
     public record Rate(int decided, double wins, Double rate, Double ciLow, Double ciHigh) {}

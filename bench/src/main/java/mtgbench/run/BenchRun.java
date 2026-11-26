@@ -53,12 +53,16 @@ public final class BenchRun {
         this.console = console;
     }
 
+    /** Every game of the run, ignoring any shard. */
+    public static List<GameSpec> fullSchedule(BenchConfig config) {
+        return config.mode() == BenchConfig.Mode.POD
+                ? Scheduler.pod(config.opponents().size(), config.games(), config.seed())
+                : Scheduler.gauntlet(config.opponents().size(), config.games(), config.seed());
+    }
+
     /** Every game of the run's schedule that belongs to its shard (all games if not sharded). */
     public static List<GameSpec> schedule(BenchConfig config) {
-        if (config.mode() != BenchConfig.Mode.GAUNTLET) {
-            throw new UnsupportedOperationException("pod mode is not implemented yet (Phase 4)");
-        }
-        List<GameSpec> all = Scheduler.gauntlet(config.opponents().size(), config.games(), config.seed());
+        List<GameSpec> all = fullSchedule(config);
         if (config.shard() == null) {
             return all;
         }
@@ -66,6 +70,9 @@ public final class BenchRun {
     }
 
     public static Summary summarize(RunManifest manifest, Collection<GameRecord> records) {
+        if (manifest.config().mode() == BenchConfig.Mode.POD) {
+            return Aggregator.pod(manifest.runId(), manifest.targetName(), manifest.opponentNames(), records);
+        }
         return Aggregator.gauntlet(manifest.runId(), manifest.targetName(), manifest.opponentNames(),
                 manifest.opponentWeights(), records);
     }
@@ -99,7 +106,7 @@ public final class BenchRun {
 
         ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor(daemon("watchdog"));
         ExecutorService pool = Executors.newFixedThreadPool(config.threads(), daemon("game-worker"));
-        GameRunner runner = new GameRunner(manifest.runId(), "gauntlet", config.format(), decks, config.aiProfile(),
+        GameRunner runner = new GameRunner(manifest.runId(), modeName(config), config.format(), decks, config.aiProfile(),
                 config.maxRounds(), config.gameTimeoutSec(), watchdog, gameLogDir);
 
         AtomicInteger finished = new AtomicInteger();
@@ -149,6 +156,10 @@ public final class BenchRun {
             watchdog.shutdownNow();
         }
         return writeSummary(manifest, runDir, records);
+    }
+
+    public static String modeName(BenchConfig config) {
+        return config.mode().name().toLowerCase(Locale.ROOT);
     }
 
     private static ThreadFactory daemon(String prefix) {

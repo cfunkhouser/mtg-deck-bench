@@ -12,11 +12,11 @@ import java.util.concurrent.ScheduledExecutorService;
 import mtgbench.config.BenchConfig;
 import mtgbench.deck.LoadedDeck;
 import mtgbench.engine.GameRunner;
+import mtgbench.run.BenchRun;
 import mtgbench.run.ForgeOutput;
 import mtgbench.run.RunManifest;
 import mtgbench.run.RunSupport;
 import mtgbench.schedule.GameSpec;
-import mtgbench.schedule.Scheduler;
 import mtgbench.stats.GameRecord;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
@@ -48,7 +48,7 @@ public final class ReplayCommand implements Callable<Integer> {
         Path logDir = Files.createDirectories(runDir.resolve("logs").resolve("replay"));
         PrintStream console = ForgeOutput.redirectTo(logDir.resolve("forge.log"));
 
-        List<GameSpec> all = Scheduler.gauntlet(config.opponents().size(), config.games(), config.seed());
+        List<GameSpec> all = BenchRun.fullSchedule(config);
         if (gameId < 0 || gameId >= all.size()) {
             console.println("No game " + gameId + " in this run (ids 0.." + (all.size() - 1) + ")");
             return BenchCli.EXIT_USAGE;
@@ -69,7 +69,7 @@ public final class ReplayCommand implements Callable<Integer> {
         });
         GameRecord replayed;
         try {
-            GameRunner runner = new GameRunner(manifest.runId(), "gauntlet", config.format(), decks,
+            GameRunner runner = new GameRunner(manifest.runId(), BenchRun.modeName(config), config.format(), decks,
                     config.aiProfile(), config.maxRounds(), config.gameTimeoutSec(), watchdog, logDir);
             replayed = runner.play(spec);
         } finally {

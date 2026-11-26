@@ -23,6 +23,7 @@ import forge.game.GameLogEntry;
 import forge.game.GameOutcome;
 import forge.game.GameRules;
 import forge.game.Match;
+import forge.game.event.GameEventPlayerDamaged;
 import forge.game.event.GameEventTurnBegan;
 import forge.game.player.Player;
 import forge.game.player.PlayerStatistics;
@@ -119,17 +120,22 @@ public final class GameRunner {
 
             int[] lastTurn = {0};
             boolean[] turnCapped = {false};
-            Integer[] firstCastRound = new Integer[playerCount];
+            Tracker tracker = new Tracker(g, seats);
             g.subscribeToEvents(new Object() {
                 @Subscribe
                 public void onTurn(GameEventTurnBegan e) {
-                    // A commander cast since the last check happened during the turn that just ended.
-                    noteCommanderCasts(g, seats, firstCastRound, e.turnNumber() - 1, playerCount);
+                    // Casts and eliminations since the last check happened during the turn that just ended.
+                    tracker.noteTurnEnded(e.turnNumber() - 1);
                     lastTurn[0] = e.turnNumber();
                     if (e.turnNumber() > maxTurns) {
                         turnCapped[0] = true;
                         g.setGameOver(GameEndReason.Draw);
                     }
+                }
+
+                @Subscribe
+                public void onDamage(GameEventPlayerDamaged e) {
+                    tracker.noteDamage(e);
                 }
             });
 
@@ -149,9 +155,9 @@ public final class GameRunner {
                 Thread.interrupted(); // clear a late interrupt so it can't hit the next game
             }
 
-            noteCommanderCasts(g, seats, firstCastRound, lastTurn[0], playerCount);
+            tracker.noteTurnEnded(lastTurn[0]);
             String stopReason = timedOut.get() != null ? "timeout" : turnCapped[0] ? "turnCap" : null;
-            return record(spec, g, seats, stopReason, lastTurn[0], null, start, firstCastRound);
+            return record(spec, g, seats, stopReason, lastTurn[0], null, start, tracker);
         } catch (Throwable t) {
             if (game != null && !game.isGameOver()) {
                 try {
@@ -171,7 +177,7 @@ public final class GameRunner {
     }
 
     private GameRecord record(GameSpec spec, Game game, List<RegisteredPlayer> seats, String stopReason,
-                              int lastTurn, String error, long start, Integer[] firstCastRound) {
+                              int lastTurn, String error, long start, Tracker tracker) {
         GameOutcome out = game != null ? game.getOutcome() : null;
         Map<RegisteredPlayer, Player> inGame = new IdentityHashMap<>();
         if (game != null) {
@@ -207,6 +213,20 @@ public final class GameRunner {
             error = "Forge started seat " + startedSeat + " but seat " + spec.startingSeat() + " was requested";
         }
 
+        // Multiplayer only: finishing places from Forge's elimination order (winner 1st, last one out 2nd, ...).
+        boolean multiplayer = seats.size() > 2;
+        Integer[] placement = new Integer[seats.size()];
+        if (multiplayer && ended && !drawn && winnerSeat != null && stopReason == null && game != null) {
+            placement[winnerSeat] = 1;
+            List<Player> lost = new ArrayList<>(game.getLostPlayers());
+            for (int i = 0; i < lost.size(); i++) {
+                int seat = indexOfIdentity(seats, lost.get(i).getRegisteredPlayer());
+                if (seat >= 0 && seat != winnerSeat) {
+                    placement[seat] = seats.size() - i;
+                }
+            }
+        }
+
         List<PlayerRecord> players = new ArrayList<>();
         for (int seat = 0; seat < seats.size(); seat++) {
             RegisteredPlayer rp = seats.get(seat);
@@ -218,16 +238,24 @@ public final class GameRunner {
             Integer casts = null, firstCast = null, cmdDamage = null;
             if (format == Format.COMMANDER && p != null) {
                 casts = p.getTotalCommanderCast();
-                firstCast = firstCastRound != null ? firstCastRound[seat] : null;
+                firstCast = tracker != null ? tracker.firstCastRound[seat] : null;
                 int most = 0;
                 for (Map.Entry<forge.game.card.Card, Integer> d : p.getCommanderDamage()) {
                     most = Math.max(most, d.getValue());
                 }
                 cmdDamage = most;
             }
+            Integer eliminatedRound = null, eliminatedBy = null;
+            if (multiplayer && tracker != null && !drawn && lossReason != null) {
+                eliminatedRound = tracker.eliminatedRound[seat];
+                if ("LifeReachedZero".equals(lossReason) || "CommanderDamage".equals(lossReason)) {
+                    eliminatedBy = tracker.lastDamagedBy[seat];
+                }
+            }
             players.add(new PlayerRecord(seat, decks.get(deckIndex).name(), deckIndex == 0,
                     seat == startedSeat, ps != null ? ps.getMulliganCount() : 0,
-                    p != null ? p.getLife() : null, drawn ? null : lossReason, casts, firstCast, cmdDamage));
+                    p != null ? p.getLife() : null, drawn ? null : lossReason, casts, firstCast, cmdDamage,
+                    placement[seat], eliminatedRound, eliminatedBy));
         }
 
         String outcome;
@@ -270,16 +298,57 @@ public final class GameRunner {
         }
     }
 
-    /** Records, per seat, the round of the first commander cast seen by the end of {@code turn}. */
-    private void noteCommanderCasts(Game g, List<RegisteredPlayer> seats, Integer[] firstCastRound, int turn,
-                                    int playerCount) {
-        if (format != Format.COMMANDER || turn < 1) {
-            return;
+    /**
+     * Per-seat facts gathered while a game runs, on the game thread. Forge fires no event when a
+     * player loses or casts a commander, so both are checked whenever a turn ends.
+     */
+    private final class Tracker {
+        final Game game;
+        final List<RegisteredPlayer> seats;
+        final Integer[] firstCastRound;
+        final Integer[] eliminatedRound;
+        /** Seat whose permanent or spell last damaged this seat's player (damage from oneself ignored). */
+        final Integer[] lastDamagedBy;
+        final Map<Integer, Integer> seatByPlayerId = new java.util.HashMap<>();
+
+        Tracker(Game game, List<RegisteredPlayer> seats) {
+            this.game = game;
+            this.seats = seats;
+            firstCastRound = new Integer[seats.size()];
+            eliminatedRound = new Integer[seats.size()];
+            lastDamagedBy = new Integer[seats.size()];
+            for (Player p : game.getRegisteredPlayers()) {
+                seatByPlayerId.put(p.getId(), indexOfIdentity(seats, p.getRegisteredPlayer()));
+            }
         }
-        for (Player p : g.getRegisteredPlayers()) {
-            int seat = indexOfIdentity(seats, p.getRegisteredPlayer());
-            if (seat >= 0 && firstCastRound[seat] == null && p.getTotalCommanderCast() > 0) {
-                firstCastRound[seat] = (turn - 1) / playerCount + 1;
+
+        void noteTurnEnded(int turn) {
+            if (turn < 1) {
+                return;
+            }
+            int round = (turn - 1) / seats.size() + 1;
+            for (Player p : game.getRegisteredPlayers()) {
+                int seat = indexOfIdentity(seats, p.getRegisteredPlayer());
+                if (seat < 0) {
+                    continue;
+                }
+                if (format == Format.COMMANDER && firstCastRound[seat] == null && p.getTotalCommanderCast() > 0) {
+                    firstCastRound[seat] = round;
+                }
+                if (eliminatedRound[seat] == null && p.hasLost()) {
+                    eliminatedRound[seat] = round;
+                }
+            }
+        }
+
+        void noteDamage(GameEventPlayerDamaged e) {
+            if (e.target() == null || e.source() == null || e.source().getController() == null || e.amount() <= 0) {
+                return;
+            }
+            Integer target = seatByPlayerId.get(e.target().getId());
+            Integer source = seatByPlayerId.get(e.source().getController().getId());
+            if (target != null && source != null && !target.equals(source)) {
+                lastDamagedBy[target] = source;
             }
         }
     }

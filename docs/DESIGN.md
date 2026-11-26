@@ -190,8 +190,10 @@ Score = 100 × Σᵢ ωᵢ · wᵢ        ωᵢ = weightᵢ / Σ weight   (equal
   as a 50% gauntlet win rate.
 - **Mean placement**, from elimination order: 1 = winner, P = first eliminated.
 - Win rate by seat, to show turn-order advantage.
-- Head-to-head: when T is eliminated, which opponent dealt the lethal blow. Forge provides this
-  through damage-source tracking where it's available; otherwise it's omitted.
+- Head-to-head: when T is eliminated, which opponent dealt the lethal blow. This is the controller of
+  the last card that damaged T (from Forge's damage events), recorded for losses to life or commander
+  damage; other losses (milled, poison, alternate win) have none. Also reported: which deck won the games
+  T lost.
 
 ### 4.4 Sample size guidance
 The report prints the CI half-width. As a rule of thumb, N=100 gives about ±10 pp and N=400 gives
@@ -380,14 +382,38 @@ Details and measurements: [phase0-findings.md](phase0-findings.md).
        168 MB, and the image from 1.19 GB to 707 MB. 20 seeded games came out identical with the trimmed
        and the full `res/`.
      - `deckgendecks/` stays, because Forge logs errors at startup without it.
-     - The workflow passes actionlint, and the test job was run locally with `act`.
+     - The workflow passes actionlint.
+     - The **test** job ran locally with `act`: 2 min for the Forge build, 35 s for the 48 tests.
+     - The **image** job's steps were run directly (`docker build` + `scripts/smoke-test.sh`). It wasn't
+       run under `act`, because the GitHub Actions layer cache only exists on GitHub.
      - Not done: publishing the image to a registry. That needs a decision on the repo's license first
        (§11).
-6. **Phase 4 — Pod mode (multiplayer), constructed and Commander.**
+6. **Phase 4 — Pod mode (multiplayer), constructed and Commander. ✅ Done.**
    - Seat rotation, re-testing the forced first player with 3–4 players.
    - Placement and per-seat statistics, and who eliminated T.
    - Pod score (§4.3).
    - The main use case is Commander pods of 4.
+   - Result:
+     - **Seating:** `--mode pod` seats the target and all opponents at one table. Seat 0 always goes first,
+       so seat = turn position. The target's seat cycles fastest, so every block of P games covers every
+       seat. Opponent order rotates every P games, so every opponent sits directly before and after the
+       target equally often over P×(P−1) games. Game counts are rounded up to a multiple of P, with a note.
+     - **Forced first player with 3–4 players:** correct in every game of `PodGameTest`, which plays real
+       4-player games.
+     - **Per-player records:**
+       - `placement`, from Forge's `Game.getLostPlayers()` order;
+       - `eliminatedRound`, checked at each turn start, because Forge fires no "player lost" event;
+       - `eliminatedBySeat`: the seat whose card last damaged that player, from `GameEventPlayerDamaged`,
+         set only for losses to life or commander damage.
+     - **Pod summary:**
+       - win share against the fair share and the pod score (§4.3);
+       - mean placement and how often each place was reached;
+       - win rate by seat;
+       - wins per deck;
+       - who won and who dealt the last damage when the target lost;
+       - the gauntlet's mulligan, end-of-game, game-length and Commander sections over the whole table.
+     - **Example data:** two more Commander example decks (Talrand, Ayara) make a 4-player pod possible.
+     - **Smoke test:** also plays a 3-game constructed pod.
 7. **Phase 5 — Nice-to-haves.**
    - Adaptive N (`--target-ci`), per-deck AI profiles, an HTML report, and Bo3 with sideboarding.
    - Commander variants such as Brawl and Oathbreaker, plus house rules (free first mulligan).
