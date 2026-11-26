@@ -257,6 +257,7 @@ mtg-deck-bench/
   docker/Dockerfile
   examples/decks/               # sample decks for smoke tests
   docs/                         # DESIGN.md, phase0-findings.md
+  mise.toml, mise.lock          # pinned dev tools (JDK, Maven, actionlint) and tasks; CI uses them too
 ```
 
 **Forge dependency.** Forge isn't published to a dependable public Maven repository, so the build
