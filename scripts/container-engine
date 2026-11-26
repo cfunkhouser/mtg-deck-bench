@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Print the container engine to use: $CONTAINER_ENGINE if set, else docker when its daemon is
+# reachable, else podman (rootless podman needs no daemon and no docker group).
+set -euo pipefail
+if [ -n "${CONTAINER_ENGINE:-}" ]; then
+    echo "$CONTAINER_ENGINE"
+elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    echo docker
+elif command -v podman >/dev/null 2>&1; then
+    echo podman
+else
+    echo "No usable container engine: install podman, or docker with access to its daemon" >&2
+    exit 1
+fi
