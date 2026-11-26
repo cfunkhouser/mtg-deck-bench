@@ -25,6 +25,9 @@ RUN cd bench && mvn -B -q package -DskipTests \
 
 # ---- Stage 2: runtime -----------------------------------------------------------------------
 FROM eclipse-temurin:17-jre
+LABEL org.opencontainers.image.title="mtgbench" \
+      org.opencontainers.image.licenses="GPL-3.0-only" \
+      org.opencontainers.image.source="https://github.com/cfunkhouser/mtg-deck-bench"
 RUN useradd --create-home --uid 10001 bench \
     && mkdir -p /data && chown bench /data
 
