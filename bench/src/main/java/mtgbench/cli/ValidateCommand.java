@@ -34,9 +34,10 @@ public final class ValidateCommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
+        Path res = forge.resolveRes();
         Path home = forge.resolveHome();
         PrintStream console = ForgeOutput.redirectTo(home.resolve("logs").resolve("validate.log"));
-        ForgeBootstrap.init(forge.resolveRes(), home);
+        ForgeBootstrap.init(res, home);
         DeckLoader loader = new DeckLoader(format, !noLegalityCheck);
         int bad = 0;
         for (Path p : decks) {

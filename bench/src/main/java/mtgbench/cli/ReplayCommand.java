@@ -45,6 +45,8 @@ public final class ReplayCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         RunManifest manifest = RunManifest.read(runDir);
         BenchConfig config = manifest.config();
+        Path res = forge.resolveRes();
+        Path home = forge.resolveHome();
         Path logDir = Files.createDirectories(runDir.resolve("logs").resolve("replay"));
         PrintStream console = ForgeOutput.redirectTo(logDir.resolve("forge.log"));
 
@@ -54,7 +56,7 @@ public final class ReplayCommand implements Callable<Integer> {
             return BenchCli.EXIT_USAGE;
         }
         GameSpec spec = all.get(gameId);
-        if (!RunSupport.startForge(forge.resolveRes(), forge.resolveHome(), config.aiProfile(), console)) {
+        if (!RunSupport.startForge(res, home, config.aiProfile(), console)) {
             return BenchCli.EXIT_USAGE;
         }
         List<LoadedDeck> decks = RunSupport.reloadDecks(manifest, console);

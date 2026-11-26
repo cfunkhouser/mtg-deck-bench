@@ -2,6 +2,7 @@ package mtgbench.cli;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 
 import mtgbench.engine.BuildProps;
 import picocli.CommandLine;
@@ -25,10 +26,33 @@ public final class BenchCli {
     public static final int EXIT_DECK = 2;
 
     public static void main(String[] args) {
-        int code = new CommandLine(new BenchCli())
+        System.exit(commandLine().execute(args));
+    }
+
+    /** The configured command line, as {@link #main} runs it. */
+    static CommandLine commandLine() {
+        return new CommandLine(new BenchCli())
                 .setCaseInsensitiveEnumValuesAllowed(true)
-                .execute(args);
-        System.exit(code);
+                .setExecutionExceptionHandler(BenchCli::handleSetupProblem);
+    }
+
+    /**
+     * A problem with the environment rather than the arguments, such as missing card data. It is
+     * printed as a plain message (no usage help) and exits with {@link #EXIT_USAGE}.
+     */
+    static final class SetupException extends RuntimeException {
+        SetupException(String message) {
+            super(message);
+        }
+    }
+
+    private static int handleSetupProblem(Exception e, CommandLine cmd, CommandLine.ParseResult parsed)
+            throws Exception {
+        if (e instanceof SetupException) {
+            cmd.getErr().println(cmd.getColorScheme().errorText(e.getMessage()));
+            return EXIT_USAGE;
+        }
+        throw e;
     }
 
     /** Where Forge's card data lives and where Forge may write. Shared by all subcommands. */
@@ -41,22 +65,40 @@ public final class BenchCli {
                 description = "Writable directory for Forge's preferences and caches. Default: $FORGE_HOME or ~/.cache/mtgbench/forge-home.")
         Path forgeHome;
 
+        /**
+         * Finds Forge's card data. Commands call this before redirecting output to a log file, so
+         * that the error reaches the user.
+         *
+         * @throws SetupException if there is none
+         */
         Path resolveRes() {
             if (forgeRes != null) {
-                return forgeRes;
+                return requireCardData(forgeRes, "--forge-res");
             }
             String env = System.getenv("FORGE_RES_DIR");
             if (env != null && !env.isBlank()) {
-                return Path.of(env);
+                return requireCardData(Path.of(env), "FORGE_RES_DIR");
             }
-            for (Path candidate : new Path[] {Path.of("forge/forge-gui/res"), Path.of("../forge/forge-gui/res"),
-                    Path.of("/opt/forge/res")}) {
+            for (Path candidate : DEFAULT_RES) {
                 if (Files.isDirectory(candidate.resolve("cardsfolder"))) {
                     return candidate;
                 }
             }
-            throw new CommandLine.ParameterException(new CommandLine(new BenchCli()),
-                    "Cannot find Forge's card data; pass --forge-res or set FORGE_RES_DIR");
+            throw new SetupException("Cannot find Forge's card data (looked in "
+                    + String.join(", ", Arrays.stream(DEFAULT_RES).map(Path::toString).toList())
+                    + "). In a source checkout, run 'mise run setup' (or scripts/build-forge.sh) to fetch and build"
+                    + " Forge; otherwise pass --forge-res or set FORGE_RES_DIR.");
+        }
+
+        private static final Path[] DEFAULT_RES = {
+            Path.of("forge/forge-gui/res"), Path.of("../forge/forge-gui/res"), Path.of("/opt/forge/res")};
+
+        private static Path requireCardData(Path dir, String source) {
+            if (!Files.isDirectory(dir.resolve("cardsfolder"))) {
+                throw new SetupException("No Forge card data in " + dir + " (from " + source
+                        + "): expected a res/ directory with cardsfolder/ in it.");
+            }
+            return dir;
         }
 
         Path resolveHome() {

@@ -110,13 +110,16 @@ public final class RunCommand implements Callable<Integer> {
     @Override
     public Integer call() throws Exception {
         BenchConfig config = resolveConfig();
+        // Before creating the run directory and sending output to its log, so a setup problem is shown.
+        Path res = forge.resolveRes();
+        Path home = forge.resolveHome();
         String runId = RunSupport.newRunId("");
         Path runDir = Files.createDirectories(config.output().resolve(runId));
 
         PrintStream console = ForgeOutput.redirectTo(runDir.resolve("logs").resolve("forge.log"));
         console.println("Run " + runId + " → " + runDir);
         console.println("Seed " + config.seed() + RunSupport.reproducibilityNote(config));
-        if (!RunSupport.startForge(forge.resolveRes(), forge.resolveHome(), config.aiProfile(), console)) {
+        if (!RunSupport.startForge(res, home, config.aiProfile(), console)) {
             return BenchCli.EXIT_USAGE;
         }
         List<LoadedDeck> decks = RunSupport.loadDecks(config, console);

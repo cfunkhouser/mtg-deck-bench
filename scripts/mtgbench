@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 # Run mtgbench from a source checkout (builds the harness on first use).
-# Forge itself must be built first: scripts/build-forge.sh
+# Forge itself must be set up first: mise run setup (or scripts/build-forge.sh).
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 bench="$root/bench"
+setup_hint="Forge isn't set up in this checkout: run 'mise run setup' (or scripts/build-forge.sh) first."
+
+# Use this checkout's card data wherever the command is run from (FORGE_RES_DIR and --forge-res still win).
+res="$root/forge/forge-gui/res"
+if [ -z "${FORGE_RES_DIR:-}" ] && [ -d "$res/cardsfolder" ]; then
+    export FORGE_RES_DIR="$res"
+fi
+
 if [ ! -f "$bench/target/cp.txt" ] || [ -n "$(find "$bench/src" "$bench/pom.xml" -newer "$bench/target/cp.txt" -print -quit)" ]; then
-    (cd "$bench" && mvn -B -q compile dependency:build-classpath -Dmdep.outputFile=target/cp.txt) >&2
+    (cd "$bench" && mvn -B -q compile dependency:build-classpath -Dmdep.outputFile=target/cp.txt) >&2 \
+        || { echo "Building the harness failed. If Maven couldn't resolve forge:*, $setup_hint" >&2; exit 1; }
 fi
 exec java -XX:+UnlockExperimentalVMOptions -XX:hashCode=2 -XX:+DisableExplicitGC -Djava.awt.headless=true \
     -cp "$bench/target/classes:$(cat "$bench/target/cp.txt")" mtgbench.cli.BenchCli "$@"

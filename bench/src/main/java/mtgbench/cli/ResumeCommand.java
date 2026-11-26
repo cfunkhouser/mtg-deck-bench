@@ -35,6 +35,8 @@ public final class ResumeCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         RunManifest manifest = RunManifest.read(runDir);
         BenchConfig config = threads != null ? manifest.config().withThreads(threads) : manifest.config();
+        Path res = forge.resolveRes();
+        Path home = forge.resolveHome();
         PrintStream console = ForgeOutput.redirectTo(runDir.resolve("logs").resolve("forge.log"));
         console.println("Resuming run " + manifest.runId() + " (seed " + config.seed() + ")"
                 + RunSupport.reproducibilityNote(config));
@@ -46,7 +48,7 @@ public final class ResumeCommand implements Callable<Integer> {
         // Drop a cut-off last line before appending, or the next record would be glued onto it.
         Reports.rewriteGames(runDir.resolve("games.jsonl"), recorded);
 
-        if (!RunSupport.startForge(forge.resolveRes(), forge.resolveHome(), config.aiProfile(), console)) {
+        if (!RunSupport.startForge(res, home, config.aiProfile(), console)) {
             return BenchCli.EXIT_USAGE;
         }
         List<LoadedDeck> decks = RunSupport.reloadDecks(manifest, console);
