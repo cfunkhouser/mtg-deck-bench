@@ -1,0 +1,66 @@
+Commander
+1 Ezuri, Renegade Leader
+
+Deck
+1 Sol Ring
+1 Arcane Signet
+1 Skullclamp
+1 Lightning Greaves
+1 Swiftfoot Boots
+1 Thought Vessel
+1 Llanowar Elves
+1 Elvish Mystic
+1 Fyndhorn Elves
+1 Elvish Archdruid
+1 Priest of Titania
+1 Elvish Visionary
+1 Elvish Champion
+1 Imperious Perfect
+1 Dwynen's Elite
+1 Elvish Warmaster
+1 Joraga Warcaller
+1 Elvish Harbinger
+1 Elvish Vanguard
+1 Elvish Pioneer
+1 Nettle Sentinel
+1 Wellwisher
+1 Elvish Clancaller
+1 Lys Alana Huntmaster
+1 Marwyn, the Nurturer
+1 Leaf-Crowned Visionary
+1 Steel Leaf Champion
+1 Craterhoof Behemoth
+1 Beast Whisperer
+1 Eternal Witness
+1 Reclamation Sage
+1 Wood Elves
+1 Farhaven Elf
+1 Sylvan Messenger
+1 Timberwatch Elf
+1 Elvish Rejuvenator
+1 Viridian Zealot
+1 Copperhorn Scout
+1 Elvish Skysweeper
+1 Jagged-Scar Archers
+1 Gilt-Leaf Archdruid
+1 Elvish Promenade
+1 Cultivate
+1 Kodama's Reach
+1 Rampant Growth
+1 Nature's Lore
+1 Three Visits
+1 Harmonize
+1 Prey Upon
+1 Krosan Grip
+1 Return of the Wildspeaker
+1 Overrun
+1 Triumph of the Hordes
+1 Heroic Intervention
+1 Chord of Calling
+1 Green Sun's Zenith
+1 Collected Company
+1 Natural Order
+1 Command Tower
+1 Myriad Landscape
+1 Rogue's Passage
+38 Forest

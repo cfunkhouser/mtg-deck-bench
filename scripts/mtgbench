@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Run mtgbench from a source checkout (builds the harness on first use).
+# Forge itself must be built first: scripts/build-forge.sh
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+bench="$root/bench"
+if [ ! -f "$bench/target/cp.txt" ] || [ -n "$(find "$bench/src" "$bench/pom.xml" -newer "$bench/target/cp.txt" -print -quit)" ]; then
+    (cd "$bench" && mvn -B -q compile dependency:build-classpath -Dmdep.outputFile=target/cp.txt) >&2
+fi
+exec java -XX:+UnlockExperimentalVMOptions -XX:hashCode=2 -XX:+DisableExplicitGC -Djava.awt.headless=true \
+    -cp "$bench/target/classes:$(cat "$bench/target/cp.txt")" mtgbench.cli.BenchCli "$@"

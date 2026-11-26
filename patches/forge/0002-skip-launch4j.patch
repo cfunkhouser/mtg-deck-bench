@@ -1,0 +1,14 @@
+diff --git a/forge-gui-desktop/pom.xml b/forge-gui-desktop/pom.xml
+index 4ea760b6..4f66a6ab 100644
+--- a/forge-gui-desktop/pom.xml
++++ b/forge-gui-desktop/pom.xml
+@@ -80,6 +80,9 @@
+                             <goal>launch4j</goal>
+                         </goals>
+                         <configuration>
++                            <!-- mtg-deck-bench: we never need the Windows .exe, and launch4j's bundled
++                                 windres is x86-only, which breaks builds on arm64 Linux. -->
++                            <skip>true</skip>
+                             <headerType>gui</headerType>
+                             <outfile>${project.build.directory}/forge.exe</outfile>
+                             <jar>${project.build.finalName}-jar-with-dependencies.jar</jar>

@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit and Forge tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Ensure Maven
+        run: command -v mvn || { sudo apt-get update -q && sudo apt-get install -y -q maven; }
+
+      - name: Forge commit
+        id: forge
+        run: echo "sha=$(git -C forge rev-parse HEAD 2>/dev/null || echo unknown)" >> "$GITHUB_OUTPUT"
+
+      # The patched Forge build lands in ~/.m2; reuse it while the Forge commit and our patches are unchanged.
+      - name: Cache Maven repository (incl. patched Forge)
+        id: m2
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: m2-${{ steps.forge.outputs.sha }}-${{ hashFiles('patches/forge/**', 'scripts/build-forge.sh', 'bench/pom.xml') }}
+          restore-keys: |
+            m2-${{ steps.forge.outputs.sha }}-
+
+      - name: Build patched Forge
+        if: steps.m2.outputs.cache-hit != 'true'
+        run: scripts/build-forge.sh
+
+      - name: Test
+        run: mvn -B -f bench/pom.xml verify
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: bench/target/surefire-reports/
+
+  image:
+    name: Docker image smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          tags: mtgbench:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        run: scripts/smoke-test.sh mtgbench:ci

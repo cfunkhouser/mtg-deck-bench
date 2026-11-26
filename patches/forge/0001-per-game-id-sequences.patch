@@ -1,0 +1,187 @@
+diff --git a/forge-game/src/main/java/forge/game/Game.java b/forge-game/src/main/java/forge/game/Game.java
+index 90e80e71..af04f1b3 100644
+--- a/forge-game/src/main/java/forge/game/Game.java
++++ b/forge-game/src/main/java/forge/game/Game.java
+@@ -65,8 +65,8 @@ public class Game {
+ 
+     private static final TaggedLogger netLog = Logger.tag("NETWORK");
+ 
+-    private static int maxId = 0;
+-    private static int nextId() { return ++maxId; }
++
++    private static int nextId() { return GameIds.next(GameIds.Kind.GAME); }
+ 
+     private boolean noGUIUser;
+ 
+diff --git a/forge-game/src/main/java/forge/game/GameIds.java b/forge-game/src/main/java/forge/game/GameIds.java
+new file mode 100644
+index 00000000..2eb454b6
+--- /dev/null
++++ b/forge-game/src/main/java/forge/game/GameIds.java
+@@ -0,0 +1,65 @@
++package forge.game;
++
++import java.util.concurrent.atomic.AtomicInteger;
++
++/**
++ * Id sequences for game objects that used to come from unsynchronized static counters
++ * ({@code private static int maxId; ++maxId}).
++ *
++ * <p>Those counters are shared by every game in the JVM. When several games run at once (headless
++ * simulation), an unsynchronized {@code ++} can lose updates and hand two objects in the same game
++ * the same id; SpellAbility, Trigger, ReplacementEffect and StaticAbility use that id for
++ * equals/hashCode, so the game then treats different abilities as equal. Sharing the counter also
++ * makes one game's ids (and with them hash ordering and AI tie-breaks) depend on what other games
++ * are doing, so seeded games cannot be reproduced.
++ *
++ * <p>By default every thread uses one global, atomic sequence, which keeps the old behaviour minus
++ * the race. A caller that runs a game on its own thread can call {@link #beginScope()} first: the
++ * game then gets private sequences, inherited by threads it starts (AI evaluation threads). Scoped
++ * ids start at {@link #SCOPED_BASE} so they never collide with ids handed out globally, for
++ * example while card data was being loaded. Game ids themselves are never scoped.
++ */
++public final class GameIds {
++    public enum Kind { GAME, SPELL_ABILITY, STACK_INSTANCE, TRIGGER, REPLACEMENT_EFFECT, STATIC_ABILITY, COMBAT_VIEW }
++
++    public static final int SCOPED_BASE = 1 << 30;
++
++    private static final class Scope {
++        final AtomicInteger[] counters = new AtomicInteger[Kind.values().length];
++        Scope(int start) {
++            for (int i = 0; i < counters.length; i++) {
++                counters[i] = new AtomicInteger(start);
++            }
++        }
++    }
++
++    private static final Scope GLOBAL = new Scope(0);
++    private static final InheritableThreadLocal<Scope> CURRENT = new InheritableThreadLocal<>();
++
++    private GameIds() {}
++
++    public static int next(Kind kind) {
++        // Game ids stay globally unique even inside a scope: static registries such as
++        // AITimeoutTracker are keyed by game id and must tell concurrent games apart.
++        Scope s = kind == Kind.GAME ? null : CURRENT.get();
++        return (s != null ? s : GLOBAL).counters[kind.ordinal()].incrementAndGet();
++    }
++
++    /**
++     * Restart a sequence at {@code value} (offset by {@link #SCOPED_BASE} inside a scope). Only the
++     * calling thread's scope is affected, so one game starting no longer resets another's ids.
++     */
++    public static void reset(Kind kind, int value) {
++        Scope s = CURRENT.get();
++        (s != null ? s : GLOBAL).counters[kind.ordinal()].set(s != null ? SCOPED_BASE + value : value);
++    }
++
++    /** Give games created on this thread (and threads it starts from now on) their own id sequences. */
++    public static void beginScope() {
++        CURRENT.set(new Scope(SCOPED_BASE));
++    }
++
++    public static void endScope() {
++        CURRENT.remove();
++    }
++}
+diff --git a/forge-game/src/main/java/forge/game/combat/CombatView.java b/forge-game/src/main/java/forge/game/combat/CombatView.java
+index 82e33e85..b63bea81 100644
+--- a/forge-game/src/main/java/forge/game/combat/CombatView.java
++++ b/forge-game/src/main/java/forge/game/combat/CombatView.java
+@@ -21,10 +21,10 @@ public class CombatView extends TrackableObject {
+ 
+     // Unique negative IDs so TrackableObject.equals() distinguishes instances.
+     // Negative IDs avoid tracker registration (only id >= 0 is registered).
+-    private static int nextId = -2;
++
+ 
+     public CombatView(final Tracker tracker) {
+-        super(nextId--, tracker);
++        super(-1 - forge.game.GameIds.next(forge.game.GameIds.Kind.COMBAT_VIEW), tracker);
+         set(TrackableProperty.AttackersWithDefenders, new ConcurrentHashMap<CardView, GameEntityView>());
+         set(TrackableProperty.AttackersWithBlockers, new ConcurrentHashMap<CardView, FCollection<CardView>>());
+         set(TrackableProperty.BandsWithDefenders, new ConcurrentHashMap<FCollection<CardView>, GameEntityView>());
+diff --git a/forge-game/src/main/java/forge/game/replacement/ReplacementEffect.java b/forge-game/src/main/java/forge/game/replacement/ReplacementEffect.java
+index fa5ebf3f..43b0bc6a 100644
+--- a/forge-game/src/main/java/forge/game/replacement/ReplacementEffect.java
++++ b/forge-game/src/main/java/forge/game/replacement/ReplacementEffect.java
+@@ -44,8 +44,8 @@ import forge.util.TextUtil;
+  *
+  */
+ public abstract class ReplacementEffect extends TriggerReplacementBase {
+-    private static int maxId = 0;
+-    private static int nextId() { return ++maxId; }
++
++    private static int nextId() { return forge.game.GameIds.next(forge.game.GameIds.Kind.REPLACEMENT_EFFECT); }
+ 
+     /** The ID. */
+     private int id;
+diff --git a/forge-game/src/main/java/forge/game/spellability/SpellAbility.java b/forge-game/src/main/java/forge/game/spellability/SpellAbility.java
+index 30480a9f..560453c8 100644
+--- a/forge-game/src/main/java/forge/game/spellability/SpellAbility.java
++++ b/forge-game/src/main/java/forge/game/spellability/SpellAbility.java
+@@ -75,8 +75,8 @@ import forge.game.zone.ZoneType;
+  * @version $Id$
+  */
+ public abstract class SpellAbility extends CardTraitBase implements ISpellAbility, IIdentifiable, Comparable<SpellAbility> {
+-    private static int maxId = 0;
+-    private static int nextId() { return ++maxId; }
++
++    private static int nextId() { return forge.game.GameIds.next(forge.game.GameIds.Kind.SPELL_ABILITY); }
+ 
+     public static class EmptySa extends SpellAbility {
+         public EmptySa(Card sourceCard) { super(sourceCard, Cost.Zero); setActivatingPlayer(sourceCard.getController());}
+diff --git a/forge-game/src/main/java/forge/game/spellability/SpellAbilityStackInstance.java b/forge-game/src/main/java/forge/game/spellability/SpellAbilityStackInstance.java
+index bbee2448..1f738526 100644
+--- a/forge-game/src/main/java/forge/game/spellability/SpellAbilityStackInstance.java
++++ b/forge-game/src/main/java/forge/game/spellability/SpellAbilityStackInstance.java
+@@ -38,8 +38,8 @@ import forge.util.TextUtil;
+  * @version $Id$
+  */
+ public class SpellAbilityStackInstance implements IIdentifiable, IHasCardView {
+-    private static int maxId = 0;
+-    public static int nextId() { return ++maxId; }
++
++    public static int nextId() { return forge.game.GameIds.next(forge.game.GameIds.Kind.STACK_INSTANCE); }
+ 
+     // At some point I want this functioning more like Target/Target Choices
+     // where the SA has an "active"
+diff --git a/forge-game/src/main/java/forge/game/staticability/StaticAbility.java b/forge-game/src/main/java/forge/game/staticability/StaticAbility.java
+index c5eaf7f0..39e1781c 100644
+--- a/forge-game/src/main/java/forge/game/staticability/StaticAbility.java
++++ b/forge-game/src/main/java/forge/game/staticability/StaticAbility.java
+@@ -51,8 +51,8 @@ import forge.util.*;
+  * The Class StaticAbility.
+  */
+ public class StaticAbility extends CardTraitBase implements IIdentifiable, Cloneable, Comparable<StaticAbility> {
+-    private static int maxId = 0;
+-    private static int nextId() { return ++maxId; }
++
++    private static int nextId() { return forge.game.GameIds.next(forge.game.GameIds.Kind.STATIC_ABILITY); }
+ 
+     private int id;
+ 
+diff --git a/forge-game/src/main/java/forge/game/trigger/Trigger.java b/forge-game/src/main/java/forge/game/trigger/Trigger.java
+index cfd8355a..dd1cb635 100644
+--- a/forge-game/src/main/java/forge/game/trigger/Trigger.java
++++ b/forge-game/src/main/java/forge/game/trigger/Trigger.java
+@@ -53,8 +53,8 @@ import java.util.function.Predicate;
+  * @version $Id$
+  */
+ public abstract class Trigger extends TriggerReplacementBase {
+-    private static int maxId = 0;
+-    private static int nextId() { return ++maxId; }
++
++    private static int nextId() { return forge.game.GameIds.next(forge.game.GameIds.Kind.TRIGGER); }
+ 
+     /**
+      * <p>
+@@ -62,7 +62,7 @@ public abstract class Trigger extends TriggerReplacementBase {
+      * </p>
+      */
+     public static void resetIDs() {
+-        Trigger.maxId = 50000;
++        forge.game.GameIds.reset(forge.game.GameIds.Kind.TRIGGER, 50000);
+     }
+ 
+     /** The ID. */
