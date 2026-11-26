@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 # Smoke test for a built mtgbench image: validate decks, play a short constructed and Commander
-# gauntlet, and replay a game. Usage: scripts/smoke-test.sh IMAGE
+# gauntlet, and replay a game. Usage: scripts/smoke-test.sh IMAGE (built with docker or podman)
 set -euo pipefail
 image=${1:?usage: smoke-test.sh IMAGE}
+# docker or podman; see scripts/container-engine (set CONTAINER_ENGINE to choose).
+engine=$("$(dirname "$0")/container-engine")
 data=$(mktemp -d)
 chmod 777 "$data"   # the image runs as a non-root user
 decks=/opt/mtgbench/examples/decks
-run() { docker run --rm --network none -v "$data:/data" "$image" "$@"; }
+run() { "$engine" run --rm --network none -v "$data:/data" "$image" "$@"; }
 cleanup() {
     local status=$?
-    # The container writes as its own user (uid 10001). On Linux the host user can't delete those
-    # files, so remove them from a container running as root, and never let cleanup change the result.
-    docker run --rm --network none -v "$data:/data" --user 0 --entrypoint find "$image" /data -mindepth 1 -delete \
+    # The container writes as its own user (uid 10001; a subuid under rootless podman). On Linux the
+    # host user can't delete those files, so remove them from a container running as root (the host
+    # user itself under rootless podman), and never let cleanup change the result.
+    "$engine" run --rm --network none -v "$data:/data" --user 0 --entrypoint find "$image" /data -mindepth 1 -delete \
         >/dev/null 2>&1 || true
     rm -rf "$data" 2>/dev/null || echo "note: could not remove $data" >&2
     exit "$status"

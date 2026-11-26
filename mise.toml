@@ -61,11 +61,14 @@ run = "scripts/mtgbench validate examples/decks/*.txt examples/decks/commander/*
 
 # ---- Container --------------------------------------------------------------------------------
 
-[tasks."docker:build"]
-description = "Build the container image (tag: mtgbench)"
-run = "docker build -f docker/Dockerfile -t mtgbench ."
+# The engine is docker when its daemon is reachable, else podman; set CONTAINER_ENGINE to choose.
+
+[tasks."image:build"]
+description = "Build the container image with docker or podman (tag: mtgbench)"
+alias = "docker:build"
+run = '"$(scripts/container-engine)" build -f docker/Dockerfile -t mtgbench .'
 
 [tasks.smoke]
 description = "Build the image and run the smoke test against it (about a minute)"
-depends = ["docker:build"]
+depends = ["image:build"]
 run = "scripts/smoke-test.sh mtgbench"

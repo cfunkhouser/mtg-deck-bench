@@ -328,6 +328,14 @@ docker run --rm -v "$PWD/decks:/decks:ro" -v "$PWD/results:/data/results" mtgben
   100–200 MB per worker thread.
 - The container needs no network access at runtime.
 - Docker Compose and Kubernetes Job examples (including sharded runs) will live in `docker/`.
+- **Docker or podman.** The image builds and runs under both. `scripts/container-engine` picks the engine for
+  `mise run image:build` and `scripts/smoke-test.sh`: `$CONTAINER_ENGINE` if set, else Docker when its daemon
+  is reachable, else podman. CI uses Docker. Under rootless podman the image's user (uid 10001) maps to a
+  subuid, so pass `--userns=keep-id:uid=10001,gid=10001` to give a bind-mounted results directory to the
+  host user.
+- **Maven's local repository stays in the build stage's layers** (`MAVEN_ARGS=-Dmaven.repo.local=/src/.m2`),
+  not in a BuildKit cache mount. A cache mount's contents aren't exported with the layer cache, so a cached
+  `build-forge.sh` layer restored in CI would come back without the patched Forge it installed.
 
 ## 9. Phase 0 results (done)
 
@@ -408,8 +416,8 @@ Details and measurements: [phase0-findings.md](phase0-findings.md).
      - The **test** job ran locally with `act`: 2 min for the Forge build, 35 s for the 48 tests.
      - The **image** job's steps were run directly (`docker build` + `scripts/smoke-test.sh`). It wasn't
        run under `act`, because the GitHub Actions layer cache only exists on GitHub.
-     - Not done: publishing the image to a registry. That needs a decision on the repo's license first
-       (§11).
+     - Not done: publishing the image to a registry. The license is now chosen (GPL-3.0-only, §11), so
+       publishing isn't blocked on that any more.
 6. **Phase 4 — Pod mode (multiplayer), constructed and Commander. ✅ Done.**
    - Seat rotation, re-testing the forced first player with 3–4 players.
    - Placement and per-seat statistics, and who eliminated T.
@@ -457,7 +465,9 @@ Details and measurements: [phase0-findings.md](phase0-findings.md).
 - **Card coverage.** Very new sets or unusual cards may not be implemented in the pinned Forge
   version. Validation fails fast and names the cards.
 - **Licensing.** Forge is **GPL-3.0**. A harness that links it and is distributed, including as a
-  public container image, must be GPL-3.0-compatible. The plan is to license this repo GPL-3.0.
+  public container image, must be GPL-3.0-compatible. This repo is licensed **GPL-3.0-only** (`LICENSE`,
+  declared in `bench/pom.xml` and as the image's `org.opencontainers.image.licenses` label). Publishing the
+  image means also offering the corresponding source, including the pinned Forge commit and our patches.
 - **Performance.** A typical AI-vs-AI game takes about 1–10 s. 5 opponents × 400 games ≈ 2,000 games,
   which is a few minutes on 8 cores if S3 succeeds.
 - **Forge API drift.** Forge's internal APIs aren't stable. Pinning the submodule and keeping all
