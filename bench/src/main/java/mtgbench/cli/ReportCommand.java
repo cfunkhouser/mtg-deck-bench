@@ -25,10 +25,9 @@ public final class ReportCommand implements Callable<Integer> {
         PrintStream console = System.out;
         RunManifest manifest = RunManifest.read(runDir);
         List<GameRecord> games = RunSupport.readRecorded(runDir, console);
-        int expected = BenchRun.schedule(manifest.config()).size();
-        if (games.size() < expected) {
-            console.printf("Note: %d of %d games are recorded; 'mtgbench resume %s' plays the rest.%n",
-                    games.size(), expected, runDir);
+        if (!BenchRun.remaining(manifest.config(), games).isEmpty()) {
+            console.printf("Note: the run isn't finished (%d games recorded); 'mtgbench resume %s' plays the rest.%n",
+                    games.size(), runDir);
         }
         Summary summary = BenchRun.writeSummary(manifest, runDir, games);
         console.print(Reports.table(summary, false));

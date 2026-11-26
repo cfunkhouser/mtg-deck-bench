@@ -69,6 +69,10 @@ To spread a run over several machines, give each the same command plus `--shard 
 scripts/mtgbench merge results/<shard run 1> results/<shard run 2> ... --out results/merged
 ```
 
+Not sure how many games you need? `--target-ci 0.05` keeps adding games until every matchup's 95% CI is
+within ±5 percentage points. `-n` is then the first batch, and `--max-games` caps each matchup. Lopsided matchups
+stop early, and close ones keep going. The summary says which matchups, if any, hit the cap first.
+
 Add `--deterministic` (one game at a time) when you need every game to be reproducible, for example
 for `replay`. Without it, runs use all CPUs: the totals are valid, but single games can't be replayed
 exactly.

@@ -30,15 +30,39 @@ public record Summary(
         double timeoutRate,
         double errorRate,
         List<MatchupSummary> matchups,
-        @JsonInclude(JsonInclude.Include.NON_NULL) PodSummary pod) {
+        @JsonInclude(JsonInclude.Include.NON_NULL) PodSummary pod,
+        @JsonInclude(JsonInclude.Include.NON_NULL) AdaptiveSummary adaptive) {
+
+    public Summary(String runId, String target, int gamesPlayed, Rate overall, Double score, Double scoreCiHalfWidth,
+                   Double unweightedMean, String worstMatchup, double timeoutRate, double errorRate,
+                   List<MatchupSummary> matchups, PodSummary pod) {
+        this(runId, target, gamesPlayed, overall, score, scoreCiHalfWidth, unweightedMean, worstMatchup, timeoutRate,
+                errorRate, matchups, pod, null);
+    }
 
     /** Gauntlet summary (no pod section). */
     public Summary(String runId, String target, int gamesPlayed, Rate overall, Double score, Double scoreCiHalfWidth,
                    Double unweightedMean, String worstMatchup, double timeoutRate, double errorRate,
                    List<MatchupSummary> matchups) {
         this(runId, target, gamesPlayed, overall, score, scoreCiHalfWidth, unweightedMean, worstMatchup, timeoutRate,
-                errorRate, matchups, null);
+                errorRate, matchups, null, null);
     }
+
+    /** The same summary with an adaptive-run section. */
+    public Summary withAdaptive(AdaptiveSummary a) {
+        return new Summary(runId, target, gamesPlayed, overall, score, scoreCiHalfWidth, unweightedMean, worstMatchup,
+                timeoutRate, errorRate, matchups, pod, a);
+    }
+
+    /**
+     * How an adaptive run ({@code --target-ci}) stopped.
+     *
+     * @param targetCi wanted 95% CI half-width (0.05 = ±5 pp)
+     * @param maxGames cap per matchup (pod: in total)
+     * @param finished no matchup needs more games
+     * @param capped   matchups that hit the cap with a wider CI than the target (pod: the table)
+     */
+    public record AdaptiveSummary(double targetCi, int maxGames, boolean finished, List<String> capped) {}
 
     /**
      * Pod mode: the target and all opponents at one table. {@code matchups} then holds one entry for

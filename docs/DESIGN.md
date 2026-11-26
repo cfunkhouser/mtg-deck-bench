@@ -140,7 +140,9 @@ several seconds to tens of seconds per game, rather than 0.1–0.3 s. Plan sampl
 ```yaml
 mode: gauntlet            # gauntlet | pod
 format: constructed       # constructed | commander
-games: 200                # N: per matchup (gauntlet) or total (pod)
+games: 200                # N: per matchup (gauntlet) or total (pod); the first batch when targetCi is set
+targetCi: 0.05            # optional: add games until every matchup's 95% CI is within ±5 pp (§4.4)
+maxGames: 500             # optional, with targetCi: cap per matchup (default: a 50% matchup's need + 25%)
 target: decks/mono-red.txt
 opponents:
   - path: decks/azorius-control.dck
@@ -197,8 +199,26 @@ Score = 100 × Σᵢ ωᵢ · wᵢ        ωᵢ = weightᵢ / Σ weight   (equal
 
 ### 4.4 Sample size guidance
 The report prints the CI half-width. As a rule of thumb, N=100 gives about ±10 pp and N=400 gives
-about ±5 pp at w≈50%. `--target-ci 0.05` can keep adding games until every matchup's CI is narrower
-than the threshold. This is a stretch goal.
+about ±5 pp at w≈50%. Lopsided matchups need far fewer games (±5 pp at w≈90% takes about 140).
+
+**Adaptive N** (`--target-ci H`, Phase 5). Instead of a fixed N, keep adding games until every matchup's
+95% Wilson half-width is at most H. In pod mode the one "matchup" is the table's win share.
+- `--games` is the first batch per matchup. `--max-games` caps each matchup. The default cap is the
+  decided games a 50% matchup needs, plus 25% for timeouts and errors: 482 games for H = 0.05.
+- **Stages.** Each matchup grows in stages. When a stage is fully played, its CI is checked. If the CI is too wide, the next stage is
+  projected from the observed win rate and share of decided games. Each stage grows by at least 25% and at most
+  doubles, so batches stay big enough to keep every thread busy. Finished matchups stop while the others go on.
+- **Balance.** Stages after the first are multiples of 2 (gauntlet) or of P (pod). Every stopping point
+  therefore keeps the exact play/draw split or seat rotation.
+- **Resume and reproducibility.** Only games inside fully played stages count, and the plan is recomputed from
+  `games.jsonl` alone. `resume` needs no extra state, and a `--deterministic` run makes the same stopping
+  decisions every time.
+- **No sharding.** `--shard` can't be combined with `--target-ci`, because when to stop depends on every result.
+- **Optional stopping.** Stopping on the CI's *width* (not on where the estimate is) barely biases the
+  estimate. A matchup's stopping point does depend weakly on its observed rate, because rates near 50% need
+  more games, so a reported CI's real coverage can be a little under 95%.
+- **Report.** `summary.md`/`summary.json` say whether every matchup reached the target or which ones hit the
+  cap first.
 
 ## 5. Outputs
 
@@ -227,6 +247,7 @@ mtgbench run --config bench.yaml                                              # 
 mtgbench run ... --deterministic --seed 42   # one game at a time, every game reproducible  ✅
 mtgbench validate decks/*.txt                # cards known to Forge + format legality      ✅
 mtgbench run ... --shard 0/4                 # play every 4th game (machine 1 of 4)       ✅
+mtgbench run ... --target-ci 0.05 [--max-games 500]   # add games until each CI is ±5 pp   Phase 5 ✅
 mtgbench merge results/<shard runs>... --out results/merged                   # Phase 2 ✅
 mtgbench resume results/<runId>              # play only the games missing from games.jsonl ✅
 mtgbench replay results/<runId> --game 137   # replay one game, print Forge's game log    ✅
@@ -416,7 +437,13 @@ Details and measurements: [phase0-findings.md](phase0-findings.md).
      - **Example data:** two more Commander example decks (Talrand, Ayara) make a 4-player pod possible.
      - **Smoke test:** also plays a 3-game constructed pod.
 7. **Phase 5 — Nice-to-haves.**
-   - Adaptive N (`--target-ci`), per-deck AI profiles, an HTML report, and Bo3 with sideboarding.
+   - **Adaptive N (`--target-ci`). ✅ Done** (§4.4).
+     - `AdaptivePlan` is a pure planner. Its tests simulate whole runs with scripted outcomes: lopsided matchups
+       stop early, timeouts don't count toward the CI, the cap is respected, pods stop on whole rotations, and
+       resuming from 25 random interruptions ends with exactly the games of the uninterrupted run.
+     - Checked end to end with real games: a deterministic adaptive run, killed partway and resumed, gives
+       the same games as the same run uninterrupted.
+   - Still to do: per-deck AI profiles, an HTML report, and Bo3 with sideboarding.
    - Commander variants such as Brawl and Oathbreaker, plus house rules (free first mulligan).
 
 ## 11. Risks and caveats

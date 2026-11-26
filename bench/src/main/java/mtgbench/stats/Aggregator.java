@@ -20,7 +20,7 @@ import mtgbench.stats.Summary.Rate;
 public final class Aggregator {
     /** A matchup is flagged when more than this share of its games ended in timeout or error. */
     public static final double FLAG_THRESHOLD = 0.05;
-    private static final double Z95 = 1.959963984540054;
+    public static final double Z95 = 1.959963984540054;
 
     private Aggregator() {}
 
@@ -281,13 +281,22 @@ public final class Aggregator {
         return new Rate(decided, wins, wins / decided, ci[0], ci[1]);
     }
 
+    /**
+     * Half-width of the 95% Wilson interval at observed rate {@code p} over {@code n} games (the
+     * interval itself is clipped to [0, 1]; this is the unclipped half-width, which never exceeds it).
+     */
+    public static double wilsonHalfWidth(double p, int n) {
+        double z2 = Z95 * Z95;
+        return Z95 * Math.sqrt(p * (1 - p) / n + z2 / (4.0 * n * n)) / (1 + z2 / n);
+    }
+
     /** 95% Wilson score interval for {@code successes} out of {@code n}. */
-    static double[] wilson(double successes, int n) {
+    public static double[] wilson(double successes, int n) {
         double p = successes / n;
         double z2 = Z95 * Z95;
         double denom = 1 + z2 / n;
         double centre = (p + z2 / (2 * n)) / denom;
-        double half = Z95 * Math.sqrt(p * (1 - p) / n + z2 / (4.0 * n * n)) / denom;
+        double half = wilsonHalfWidth(p, n);
         return new double[] {Math.max(0, centre - half), Math.min(1, centre + half)};
     }
 }

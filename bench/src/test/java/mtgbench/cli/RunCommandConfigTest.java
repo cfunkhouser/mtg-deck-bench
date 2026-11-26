@@ -1,6 +1,7 @@
 package mtgbench.cli;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -75,6 +76,36 @@ class RunCommandConfigTest {
                 () -> resolve("-T", "t.txt", "-O", "a.txt", "--weights", "1,2"));
         assertThrows(CommandLine.ParameterException.class,
                 () -> resolve("-T", "t.txt", "-O", "a.txt", "--deterministic", "-t", "4"));
+    }
+
+    @Test
+    void targetCiFromFlagsAndFile() throws Exception {
+        BenchConfig c = resolve("-T", "t.txt", "-O", "a.txt", "--target-ci", "0.05");
+        assertEquals(BenchConfig.DEFAULT_GAMES, c.games(), "--games stays the first batch");
+        assertEquals(0.05, c.adaptive().targetCi());
+        assertEquals(BenchConfig.Adaptive.defaultMaxGames(0.05, 2), c.adaptive().maxGames());
+        assertEquals(c.adaptive().maxGames(), c.scheduledGames());
+
+        Path cfg = dir.resolve("bench.yaml");
+        Files.writeString(cfg, "target: t.txt\nopponents: [{path: a.txt}, {path: b.txt}]\nmode: pod\n"
+                + "games: 30\ntargetCi: 0.1\nmaxGames: 100\n");
+        BenchConfig pod = resolve("-c", cfg.toString());
+        assertEquals(0.1, pod.adaptive().targetCi());
+        assertEquals(102, pod.adaptive().maxGames(), "rounded up to whole 3-seat rotations");
+
+        assertNull(resolve("-T", "t.txt", "-O", "a.txt").adaptive(), "fixed game count by default");
+    }
+
+    @Test
+    void targetCiRejectsBadInput() {
+        assertThrows(CommandLine.ParameterException.class,
+                () -> resolve("-T", "t.txt", "-O", "a.txt", "--max-games", "500"), "--max-games alone");
+        assertThrows(CommandLine.ParameterException.class,
+                () -> resolve("-T", "t.txt", "-O", "a.txt", "--target-ci", "5"), "percent instead of a share");
+        assertThrows(CommandLine.ParameterException.class,
+                () -> resolve("-T", "t.txt", "-O", "a.txt", "--target-ci", "0.05", "-n", "200", "--max-games", "100"));
+        assertThrows(CommandLine.ParameterException.class,
+                () -> resolve("-T", "t.txt", "-O", "a.txt", "--target-ci", "0.05", "--shard", "0/2"));
     }
 
     @Test

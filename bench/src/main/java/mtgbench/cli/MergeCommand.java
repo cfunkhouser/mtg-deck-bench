@@ -66,12 +66,11 @@ public final class MergeCommand implements Callable<Integer> {
         merged.write(runDir);
         Reports.rewriteGames(runDir.resolve("games.jsonl"), new ArrayList<>(byId.values()));
 
-        int expected = BenchRun.schedule(config).size();
         Summary summary = BenchRun.writeSummary(merged, runDir, byId.values());
         console.print(Reports.table(summary, false));
-        if (byId.size() < expected) {
-            console.printf("Note: %d of %d games are present; the merged run is incomplete "
-                    + "('mtgbench resume %s' plays the rest).%n", byId.size(), expected, runDir);
+        if (!BenchRun.remaining(config, byId.values()).isEmpty()) {
+            console.printf("Note: %d games are present and the merged run is incomplete "
+                    + "('mtgbench resume %s' plays the rest).%n", byId.size(), runDir);
         }
         console.println("Merged " + runDirs.size() + " runs into " + runDir);
         return 0;
@@ -83,6 +82,7 @@ public final class MergeCommand implements Callable<Integer> {
         if (!Objects.equals(a.forgeVersion(), b.forgeVersion())) return "different Forge versions";
         if (x.mode() != y.mode() || x.format() != y.format()) return "different mode or format";
         if (x.games() != y.games()) return "different number of games";
+        if (!Objects.equals(x.adaptive(), y.adaptive())) return "different target CI settings";
         if (x.seed() != y.seed()) return "different seeds";
         if (x.maxRounds() != y.maxRounds() || x.gameTimeoutSec() != y.gameTimeoutSec()) return "different limits";
         if (!Objects.equals(x.aiProfile(), y.aiProfile())) return "different AI profiles";
