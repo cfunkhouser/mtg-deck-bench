@@ -246,6 +246,7 @@ mtgbench run --target decks/red.txt --opponent decks/uw.dck --opponent decks/bg.
 mtgbench run --config bench.yaml                                              # Phase 1 ✅
 mtgbench run ... --deterministic --seed 42   # one game at a time, every game reproducible  ✅
 mtgbench validate decks/*.txt                # cards known to Forge + format legality      ✅
+mtgbench fetch https://archidekt.com/decks/123456/x decks/x.txt   # download + validate   Phase 5 ✅
 mtgbench run ... --shard 0/4                 # play every 4th game (machine 1 of 4)       ✅
 mtgbench run ... --target-ci 0.05 [--max-games 500]   # add games until each CI is ±5 pp   Phase 5 ✅
 mtgbench merge results/<shard runs>... --out results/merged                   # Phase 2 ✅
@@ -264,9 +265,10 @@ mtg-deck-bench/
   bench/                        # Maven module (Java 17)
     pom.xml                     # depends on forge-gui-desktop (installed from the submodule)
     src/main/java/mtgbench/
-      cli/        BenchCli, RunCommand, ValidateCommand
+      cli/        BenchCli, RunCommand, ValidateCommand, FetchCommand, ...
       config/     BenchConfig (resolved), ConfigFile (bench.yaml), Format
       deck/       DeckLoader, LoadedDeck, DeckException
+      fetch/      Archidekt (API client, URL parsing), ArchidektDeck (JSON to deck sections and text)
       engine/     ForgeBootstrap, HeadlessGui, GameRunner, BenchAiPlayer, PerThreadRandom
       schedule/   Scheduler, GameSpec
       run/        BenchRun (thread pool, outputs), ForgeOutput (log redirection)
@@ -451,6 +453,19 @@ Details and measurements: [phase0-findings.md](phase0-findings.md).
        resuming from 25 random interruptions ends with exactly the games of the uninterrupted run.
      - Checked end to end with real games: a deterministic adaptive run, killed partway and resumed, gives
        the same games as the same run uninterrupted.
+   - **Deck import from Archidekt (`fetch URL OUT`). ✅ Done.**
+     - Reads Archidekt's public JSON API (`/api/decks/<id>/`) and writes a plain-text list with `Commander`,
+       `Deck` and `Sideboard` headers, card names only (Forge picks the printing). It then runs the same
+       checks as `validate`, unless `--no-validate`; the file is kept even when they fail.
+     - Sections come from Archidekt's categories: the premier category is the commander; cards in a category
+       not counted in the deck (Maybeboard and the like) go to the sideboard, except when the deck is checked
+       as Commander, where they are left out (`--maybeboard` / `--no-maybeboard` override); the Sideboard
+       category and the companion go to the sideboard; the rest is the main deck. Archidekt marks its Sideboard category as counted in the deck, so it is matched by name.
+     - Two-faced cards are written by their front face, split and aftermath cards by both halves, which is
+       how Forge names them. Custom cards are left out with a note.
+     - Checked against the 60 most viewed Archidekt Commander decks: every card name resolved in Forge. The
+       only failures were real deck problems, and Maybeboards over 10 cards, which Commander legality counts
+       as a sideboard (hence leaving them out for Commander by default).
    - Still to do: per-deck AI profiles, an HTML report, and Bo3 with sideboarding.
    - Commander variants such as Brawl and Oathbreaker, plus house rules (free first mulligan).
 

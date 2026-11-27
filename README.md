@@ -48,6 +48,17 @@ Legality covers 100 cards, singleton, colour identity and the banned list. Comma
 seconds each, so plan for longer runs than with 60-card decks.
 
 Decks can be plain text lists (`4 Lightning Bolt`, Arena and MTGO exports) or Forge `.dck` files.
+To get a deck from [Archidekt](https://archidekt.com/), give `fetch` its URL and a file to write:
+
+```bash
+mise run mtgbench -- fetch https://archidekt.com/decks/123456/my-deck examples/decks/my-deck.txt
+```
+
+`fetch` writes the commander, main deck and sideboard as a text list, then checks it like `validate` does.
+Cards in Archidekt categories not counted in the deck, such as Maybeboard, go in the sideboard, except in
+Commander decks, where they are left out: Commander legality allows at most 10 sideboard cards and counts
+them for singleton. `--maybeboard` and `--no-maybeboard` choose either way. The deck must be public.
+
 Every card is checked against Forge's card database, and decks are checked for format legality
 (`--no-legality-check` skips that). Options can also come from a YAML file (`--config`, see DESIGN.md §3.2).
 
