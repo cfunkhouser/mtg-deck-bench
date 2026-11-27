@@ -256,6 +256,10 @@ mtgbench resume results/<runId>              # play only the games missing from 
 mtgbench replay results/<runId> --game 137   # replay one game, print Forge's game log    ✅
 mtgbench report results/<runId>              # rebuild summary.md/json from games.jsonl     ✅
 ```
+The target may also be an opponent (its mirror match). That opponent is named `NAME (mirror)`: deck
+names key the results, so two seats can't share one. Only a byte-for-byte copy of the target counts as its
+mirror; different deck files with the same name are an error.
+
 Built with picocli. `mtgbench run --help` lists every option. From a source checkout, use
 `scripts/mtgbench`; in the container the image's entrypoint is `mtgbench`.
 

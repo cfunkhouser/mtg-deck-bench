@@ -10,7 +10,12 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 import forge.ai.AiProfileUtil;
 import mtgbench.config.BenchConfig;
@@ -52,12 +57,37 @@ public final class RunSupport {
         if (decks == null) {
             return null;
         }
-        List<String> names = decks.stream().map(LoadedDeck::name).toList();
-        if (names.stream().distinct().count() != names.size()) {
-            console.println("Two decks have the same name " + names + "; rename a file so results can tell them apart.");
+        decks = nameMirrors(decks);
+        Map<String, Long> counts = decks.stream()
+                .collect(Collectors.groupingBy(LoadedDeck::name, TreeMap::new, Collectors.counting()));
+        List<String> clashes = counts.entrySet().stream().filter(e -> e.getValue() > 1).map(Map.Entry::getKey).toList();
+        if (!clashes.isEmpty()) {
+            List<Path> files = decks.stream().filter(d -> clashes.contains(d.name())).map(LoadedDeck::source).toList();
+            console.println("Different decks have the same name (" + String.join(", ", clashes) + "): " + files
+                    + ". Rename a file so results can tell them apart.");
             return null;
         }
         return decks;
+    }
+
+    /**
+     * Gives an opponent that is the target deck itself (same name, same bytes) its own name, "NAME (mirror)",
+     * so the target can play its mirror match and results can tell the two seats apart. A second copy is
+     * "NAME (mirror 2)", and so on. Runs and resumes apply the same rule, so names stay stable.
+     */
+    static List<LoadedDeck> nameMirrors(List<LoadedDeck> decks) {
+        LoadedDeck target = decks.get(0);
+        List<LoadedDeck> named = new ArrayList<>(decks);
+        int mirrors = 0;
+        for (int i = 1; i < named.size(); i++) {
+            LoadedDeck d = named.get(i);
+            if (d.name().equals(target.name()) && d.sha256().equals(target.sha256())) {
+                mirrors++;
+                String name = target.name() + (mirrors == 1 ? " (mirror)" : " (mirror " + mirrors + ")");
+                named.set(i, new LoadedDeck(name, d.source(), d.sha256(), d.deck(), d.warnings()));
+            }
+        }
+        return named;
     }
 
     /**
@@ -71,6 +101,7 @@ public final class RunSupport {
         if (decks == null) {
             return null;
         }
+        decks = nameMirrors(decks);
         boolean changed = false;
         for (int i = 0; i < decks.size(); i++) {
             if (!decks.get(i).sha256().equals(manifest.decks().get(i).sha256())) {
@@ -89,11 +120,13 @@ public final class RunSupport {
         DeckLoader loader = new DeckLoader(config.format(), config.checkLegality());
         List<LoadedDeck> decks = new ArrayList<>();
         boolean failed = false;
+        Set<Path> warned = new HashSet<>();
         for (Path p : paths) {
             try {
                 LoadedDeck d = loader.load(p);
                 decks.add(d);
-                for (String w : d.warnings()) {
+                // A deck listed twice (the target as its own mirror) is warned about once.
+                for (String w : warned.add(p.toAbsolutePath().normalize()) ? d.warnings() : List.<String>of()) {
                     console.println("Warning: " + d.name() + ": " + w);
                 }
             } catch (DeckException e) {
