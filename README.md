@@ -72,6 +72,16 @@ mise run mtgbench -- run -f commander -T examples/decks/commander/krenko-goblins
   -O precons/commander/40k-forces-of-the-imperium.txt -n 40
 ```
 
+To play every precon against one of them, including its mirror match:
+
+```bash
+mise run mtgbench -- run -f commander --no-legality-check -T precons/commander/cmm-planeswalker-party.txt \
+  $(printf -- '-O %s ' precons/commander/*.txt) --target-ci 0.1
+```
+
+When the target is also listed as an opponent, that matchup is reported as `NAME (mirror)`.
+`--no-legality-check` is there because three precons fail today's legality rules (see the index).
+
 `mise run precons` regenerates the directory from MTGJSON (a few minutes), for example after new precons
 come out. Collector's Editions and reprints with exactly the same cards are listed once.
 
