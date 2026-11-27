@@ -255,6 +255,7 @@ mtgbench merge results/<shard runs>... --out results/merged                   # 
 mtgbench resume results/<runId>              # play only the games missing from games.jsonl ✅
 mtgbench replay results/<runId> --game 137   # replay one game, print Forge's game log    ✅
 mtgbench report results/<runId>              # rebuild summary.md/json from games.jsonl     ✅
+mtgbench top [results/<runId>]               # live, top-like view of a run (sortable)     Phase 5 ✅
 ```
 The target may also be an opponent (its mirror match). That opponent is named `NAME (mirror)`: deck
 names key the results, so two seats can't share one. Only a byte-for-byte copy of the target counts as its
@@ -280,6 +281,7 @@ mtg-deck-bench/
       run/        BenchRun (thread pool, outputs), ForgeOutput (log redirection)
       stats/      GameRecord, Aggregator (win rates, Wilson CI, score), Summary
       report/     Reports (JSON/YAML/JSONL/Markdown)
+      top/        GamesTail (follows games.jsonl), TopModel, TopView (layout), Terminal (stty + ANSI)
     src/test/java/...           # unit tests + Forge-backed tests (deck loading, real games)
   patches/forge/                # our Forge patches, applied by scripts/build-forge.sh
   scripts/                      # build-forge.sh, mtgbench (run from a checkout)
@@ -490,6 +492,20 @@ Details and measurements: [phase0-findings.md](phase0-findings.md).
        `--no-legality-check`.
      - The directory is regenerated in place. Lists MTGJSON no longer has are removed, but only from a
        directory with an `INDEX.md` from an earlier run, and only when every download succeeded.
+   - **Live view (`mtgbench top`). ✅ Done.**
+     - A separate command that follows the run directory's `games.jsonl`, rather than a screen inside `run`.
+       So it works from another terminal, on `resume`d and finished runs, and on a run directory shared from
+       another machine, and Forge's output redirection is untouched.
+     - Each update reads only the bytes appended since the last one. A half-written last line waits for its
+       newline, and a file that shrank (rewritten by `resume`) is read again from the start. The numbers come
+       from `BenchRun.summarize`, the same code that writes `summary.md`. The plan comes from the schedule, or
+       for adaptive runs from `AdaptivePlan.status`, so the ETA there is a lower bound. The rate is measured
+       over the last 5 minutes of watching.
+     - The terminal is driven with `stty` and ANSI escape codes: no new dependency, Unix only. Raw mode and the
+       alternate screen are undone on exit, including on Ctrl-C (shutdown hook). Without a tty, or with `-b`,
+       it prints snapshots, like `top -b`.
+     - Checked in a real pseudo-terminal against a live run: each sort key and its reverse, scrolling, `q`,
+       and the terminal restored afterwards.
    - Still to do: per-deck AI profiles, an HTML report, and Bo3 with sideboarding.
    - Commander variants such as Brawl and Oathbreaker, plus house rules (free first mulligan).
 

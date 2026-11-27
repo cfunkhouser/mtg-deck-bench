@@ -99,6 +99,13 @@ mise run mtgbench -- report results/<runId>            # rebuild summary.md / su
 mise run mtgbench -- replay results/<runId> --game 17  # replay one game and print Forge's game log
 ```
 
+To watch a long run, open another terminal and run `mise run mtgbench -- top` (or
+`mise run mtgbench -- top results/<runId>`). Like `top`, it shows progress, the rate, an ETA and the overall
+win rate, then one row per matchup with games, W-L-D, win rate and 95% CI, timeouts and average rounds,
+updated every 2 seconds. Sort with `g` (games), `w` (win rate) or `r` (average rounds), plus `n` (name)
+and `o` (run order); press the key again to reverse. Scroll with `j`/`k`, the arrow keys or PgUp/PgDn, and
+quit with `q`. Without a terminal, or with `-b`, it prints plain-text snapshots instead.
+
 To spread a run over several machines, give each the same command plus `--shard i/k`, then combine:
 
 ```bash
