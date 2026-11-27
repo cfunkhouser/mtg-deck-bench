@@ -18,6 +18,14 @@ RUN scripts/build-forge.sh
 # Card data without game modes, UI assets and other languages (~170 MB instead of ~470 MB).
 RUN scripts/trim-res.sh forge/forge-gui/res /out/res
 
+# Download the harness's plugins and libraries in a layer that depends only on pom.xml, by running the
+# same goals on the POM alone (there's nothing to compile yet). Source changes then rebuild the next layer
+# without asking Maven Central for anything, which CI runners otherwise hit hard enough to get HTTP 429.
+COPY bench/pom.xml bench/
+RUN cd bench && mvn -B -q package -DskipTests \
+    && mvn -B -q dependency:copy-dependencies -DincludeScope=runtime -DoutputDirectory=/tmp/lib \
+    && rm -rf target /tmp/lib
+
 COPY bench/ bench/
 RUN cd bench && mvn -B -q package -DskipTests \
     && mvn -B -q dependency:copy-dependencies -DincludeScope=runtime -DoutputDirectory=/out/lib \

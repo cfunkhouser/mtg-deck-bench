@@ -59,6 +59,22 @@ Cards in Archidekt categories not counted in the deck, such as Maybeboard, go in
 Commander decks, where they are left out: Commander legality allows at most 10 sideboard cards and counts
 them for singleton. `--maybeboard` and `--no-maybeboard` choose either way. The deck must be public.
 
+`fetch` also takes decks Wizards of the Coast sells, from [MTGJSON](https://mtgjson.com/):
+`mise run mtgbench -- fetch mtgjson:ForcesOfTheImperium_40K out.txt`, with a `fileName` from
+[DeckList.json](https://mtgjson.com/api/v5/DeckList.json).
+
+Every Commander precon, from the 2011 Commander decks onward, is checked in under
+[`precons/commander/`](precons/commander/INDEX.md), one text list per deck, with an index of commanders,
+sets and validation results. To benchmark against one:
+
+```bash
+mise run mtgbench -- run -f commander -T examples/decks/commander/krenko-goblins.txt \
+  -O precons/commander/40k-forces-of-the-imperium.txt -n 40
+```
+
+`mise run precons` regenerates the directory from MTGJSON (a few minutes), for example after new precons
+come out. Collector's Editions and reprints with exactly the same cards are listed once.
+
 Every card is checked against Forge's card database, and decks are checked for format legality
 (`--no-legality-check` skips that). Options can also come from a YAML file (`--config`, see DESIGN.md §3.2).
 

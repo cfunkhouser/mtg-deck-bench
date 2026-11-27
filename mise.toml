@@ -59,6 +59,10 @@ run = "scripts/mtgbench"
 description = "Validate the example decks"
 run = "scripts/mtgbench validate examples/decks/*.txt examples/decks/commander/*.txt"
 
+[tasks.precons]
+description = "Regenerate precons/commander: every Commander precon from MTGJSON, checked against Forge"
+run = "scripts/mtgbench precons"
+
 # ---- Container --------------------------------------------------------------------------------
 
 # The engine is docker when its daemon is reachable, else podman; set CONTAINER_ENGINE to choose.

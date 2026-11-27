@@ -29,6 +29,7 @@ import mtgbench.config.Format;
 import mtgbench.deck.DeckLoader;
 import mtgbench.deck.LoadedDeck;
 import mtgbench.fetch.ArchidektTestDecks;
+import mtgbench.fetch.MtgjsonTestDecks;
 import mtgbench.testsupport.ForgeTestSupport;
 import picocli.CommandLine;
 
@@ -46,7 +47,8 @@ class FetchCommandTest {
     void startServer() throws Exception {
         Map<String, String> decks = Map.of(
                 "/api/decks/42/", ArchidektTestDecks.constructed(),
-                "/api/decks/7/", ArchidektTestDecks.commander());
+                "/api/decks/7/", ArchidektTestDecks.commander(),
+                "/api/v5/decks/Goblins_TST.json", MtgjsonTestDecks.goblins("Goblin Gang"));
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         server.createContext("/", exchange -> {
             String path = exchange.getRequestURI().getPath();
@@ -71,6 +73,7 @@ class FetchCommandTest {
         cli.setColorScheme(CommandLine.Help.defaultColorScheme(CommandLine.Help.Ansi.OFF));
         List<String> all = new ArrayList<>(List.of("fetch",
                 "--archidekt-api", "http://127.0.0.1:" + server.getAddress().getPort() + "/api/",
+                "--mtgjson-api", "http://127.0.0.1:" + server.getAddress().getPort() + "/api/v5/",
                 "--forge-res", System.getProperty("mtgbench.test.forgeRes"),
                 "--forge-home", System.getProperty("mtgbench.test.forgeHome")));
         all.addAll(List.of(args));
@@ -140,6 +143,19 @@ class FetchCommandTest {
     }
 
     @Test
+    void fetchesMtgjsonDecks() throws Exception {
+        Path deck = dir.resolve("goblins.txt");
+        assertEquals(0, fetch("--no-validate", "mtgjson:Goblins_TST", deck.toString()), output() + err);
+        assertTrue(output().contains("(Goblin Gang, commander: Krenko, Mob Boss, 40 main, 0 sideboard)"), output());
+        assertTrue(Files.readString(deck).contains("# From https://mtgjson.com/api/v5/decks/Goblins_TST.json\n"),
+                Files.readString(deck));
+        assertTrue(requests.get(0).startsWith("/api/v5/decks/Goblins_TST.json mtgbench/"), requests.toString());
+
+        assertEquals(BenchCli.EXIT_USAGE, fetch("--no-validate", "mtgjson:Missing_TST", dir.resolve("m.txt").toString()));
+        assertTrue(err.toString().contains("MTGJSON has no deck Missing_TST (HTTP 404)"), err.toString());
+    }
+
+    @Test
     void refusesToOverwriteWithoutForce() throws Exception {
         Path deck = Files.writeString(dir.resolve("mine.txt"), "4 Lightning Bolt\n");
         assertEquals(BenchCli.EXIT_USAGE, fetch("42", deck.toString()));
@@ -157,7 +173,7 @@ class FetchCommandTest {
         assertFalse(Files.exists(deck));
 
         assertEquals(BenchCli.EXIT_USAGE, fetch("https://moxfield.com/decks/abc", deck.toString()));
-        assertTrue(err.toString().contains("Not an Archidekt deck URL"), err.toString());
+        assertTrue(err.toString().contains("Not an Archidekt or MTGJSON deck"), err.toString());
     }
 
     @Test
