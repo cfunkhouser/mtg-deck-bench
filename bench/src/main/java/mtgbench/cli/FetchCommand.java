@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -17,7 +18,9 @@ import mtgbench.deck.DeckLoader;
 import mtgbench.engine.BuildProps;
 import mtgbench.engine.ForgeBootstrap;
 import mtgbench.fetch.Archidekt;
-import mtgbench.fetch.ArchidektDeck;
+import mtgbench.fetch.FetchException;
+import mtgbench.fetch.Mtgjson;
+import mtgbench.fetch.FetchedDeck;
 import mtgbench.run.ForgeOutput;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
@@ -29,8 +32,12 @@ import picocli.CommandLine.Spec;
 
 @Command(name = "fetch", mixinStandardHelpOptions = true,
         description = {
-            "Download a public deck from Archidekt and save it as a plain-text deck list, then check it like"
+            "Download a deck from Archidekt or MTGJSON and save it as a plain-text deck list, then check it like"
                 + " 'validate' does.",
+            "",
+            "MTGJSON has the decks Wizards of the Coast sells, such as Commander precons: give mtgjson:<fileName>,"
+                + " with a fileName from https://mtgjson.com/api/v5/DeckList.json. 'mtgbench precons' downloads"
+                + " them all.",
             "",
             "The commander goes under a Commander header. Cards in Archidekt's Sideboard category, the companion,"
                 + " and, except for Commander decks, cards in categories not counted in the deck (such as"
@@ -44,7 +51,9 @@ public final class FetchCommand implements Callable<Integer> {
     BenchCli.ForgeOptions forge = new BenchCli.ForgeOptions();
 
     @Parameters(index = "0", paramLabel = "URL",
-            description = "Archidekt deck URL, such as https://archidekt.com/decks/123456/my-deck (or just the id).")
+            description = "Archidekt deck URL, such as https://archidekt.com/decks/123456/my-deck (or just the id),"
+                    + " or an MTGJSON deck: mtgjson:ForcesOfTheImperium_40K or its"
+                    + " https://mtgjson.com/api/v5/decks/... URL.")
     String url;
 
     @Parameters(index = "1", paramLabel = "OUT", description = "Text file to write the deck list to.")
@@ -52,7 +61,7 @@ public final class FetchCommand implements Callable<Integer> {
 
     @Option(names = {"-f", "--format"},
             description = "Format to check the deck against: constructed or commander. Default: commander for"
-                    + " Archidekt Commander decks, otherwise constructed.")
+                    + " Commander decks, otherwise constructed.")
     Format format;
 
     @Option(names = "--force", description = "Overwrite OUT if it exists.")
@@ -75,10 +84,23 @@ public final class FetchCommand implements Callable<Integer> {
     @Option(names = "--archidekt-api", hidden = true)
     URI api = Archidekt.DEFAULT_API;
 
+    /** Where MTGJSON's API lives; tests point it at a local server. */
+    @Option(names = "--mtgjson-api", hidden = true)
+    URI mtgjsonApi = Mtgjson.DEFAULT_API;
+
+    /** Sent with every request: the program and version, nothing about the user. */
+    static String userAgent() {
+        return "mtgbench/" + BuildProps.get("mtgbench.version");
+    }
+
     @Override
     public Integer call() throws Exception {
-        long id = Archidekt.deckId(url).orElseThrow(() -> new ParameterException(spec.commandLine(),
-                "Not an Archidekt deck URL: " + url + " (expected https://archidekt.com/decks/<id>/...)"));
+        Optional<Long> archidektId = Archidekt.deckId(url);
+        Optional<String> mtgjsonFile = Mtgjson.deckFileName(url);
+        if (archidektId.isEmpty() && mtgjsonFile.isEmpty()) {
+            throw new ParameterException(spec.commandLine(), "Not an Archidekt or MTGJSON deck: " + url
+                    + " (expected https://archidekt.com/decks/<id>/... or mtgjson:<fileName>)");
+        }
         if (Files.exists(out) && !force) {
             throw new ParameterException(spec.commandLine(), out + " already exists; pass --force to overwrite it.");
         }
@@ -86,21 +108,29 @@ public final class FetchCommand implements Callable<Integer> {
         Path res = noValidate ? null : forge.resolveRes();
         Path home = noValidate ? null : forge.resolveHome();
 
-        ArchidektDeck deck;
+        FetchedDeck deck;
         Format checkAs;
+        String source;
         try {
-            Archidekt client = new Archidekt(api, "mtgbench/" + BuildProps.get("mtgbench.version")
-                    + " (+https://github.com/cfunkhouser/mtg-deck-bench)");
-            JsonNode json = client.fetch(id);
-            checkAs = format != null ? format : ArchidektDeck.formatOf(json);
-            deck = ArchidektDeck.parse(json, maybeboard != null ? maybeboard : checkAs != Format.COMMANDER);
-        } catch (Archidekt.FetchException e) {
+            if (archidektId.isPresent()) {
+                long id = archidektId.get();
+                JsonNode json = new Archidekt(api, userAgent()).fetch(id);
+                checkAs = format != null ? format : FetchedDeck.archidektFormat(json);
+                deck = FetchedDeck.fromArchidekt(json, maybeboard != null ? maybeboard : checkAs != Format.COMMANDER);
+                source = Archidekt.deckPage(id);
+            } else {
+                String fileName = mtgjsonFile.get();
+                deck = FetchedDeck.fromMtgjson(new Mtgjson(mtgjsonApi, userAgent()).deck(fileName));
+                checkAs = format != null ? format : deck.format();
+                source = Mtgjson.deckUrl(fileName);
+            }
+        } catch (FetchException e) {
             throw new BenchCli.SetupException(e.getMessage());
         }
         if (deck.main().isEmpty() && deck.commander().isEmpty()) {
-            throw new BenchCli.SetupException("Archidekt deck " + id + " has no cards in it.");
+            throw new BenchCli.SetupException("The deck at " + source + " has no cards in it.");
         }
-        write(deck.toText(Archidekt.deckPage(id)));
+        write(deck.toText(source));
 
         PrintStream console = System.out;
         console.println("Wrote " + out + " (" + describe(deck) + ")");
@@ -146,7 +176,7 @@ public final class FetchCommand implements Callable<Integer> {
         }
     }
 
-    private static String describe(ArchidektDeck deck) {
+    private static String describe(FetchedDeck deck) {
         List<String> parts = new ArrayList<>();
         if (!deck.name().isEmpty()) {
             parts.add(deck.name());

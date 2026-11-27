@@ -12,7 +12,7 @@ import picocli.CommandLine.Option;
 @Command(name = "mtgbench", mixinStandardHelpOptions = true,
         versionProvider = BenchCli.Version.class,
         description = "Benchmark a Magic: The Gathering deck against opponent decks with Forge's rules engine and AI.",
-        subcommands = {RunCommand.class, ValidateCommand.class, FetchCommand.class, ResumeCommand.class, ReportCommand.class,
+        subcommands = {RunCommand.class, ValidateCommand.class, FetchCommand.class, PreconsCommand.class, ResumeCommand.class, ReportCommand.class,
                 MergeCommand.class, ReplayCommand.class},
         exitCodeListHeading = "%nExit codes:%n",
         exitCodeList = {

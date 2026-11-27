@@ -13,12 +13,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import mtgbench.config.Format;
 
 /**
- * A deck as Archidekt's API returns it ({@code GET /api/decks/<id>/}), sorted into the sections of a
- * plain-text deck list.
+ * A deck downloaded from a deck site, sorted into the sections of a plain-text deck list.
  *
- * <p>Each card on Archidekt has a list of categories, and each category says whether it counts as
- * part of the deck ({@code includedInDeck}) and whether it is the commander category
- * ({@code isPremier}). Cards are sorted as follows:
+ * <p>Lines carry the card name only, so Forge picks the printing. Copies of the same card from
+ * different printings are added together.
+ *
+ * <h2>Archidekt</h2>
+ *
+ * <p>From {@code GET /api/decks/<id>/}. Each card on Archidekt has a list of categories, and each
+ * category says whether it counts as part of the deck ({@code includedInDeck}) and whether it is the
+ * commander category ({@code isPremier}). Cards are sorted as follows:
  *
  * <ol>
  *   <li>In a premier category: Commander.
@@ -29,20 +33,23 @@ import mtgbench.config.Format;
  *   <li>Everything else, including cards with no category: the main deck.
  * </ol>
  *
- * <p>Lines carry the card name only, so Forge picks the printing. Copies of the same card from
- * different printings are added together.
+ * <h2>MTGJSON</h2>
  *
- * @param name the deck's name on Archidekt
- * @param format the closest format, from Archidekt's deck format
+ * <p>From a deck file's {@code data}: {@code commander}, {@code mainBoard} and {@code sideBoard} map
+ * directly. Tokens, planes, schemes and {@code displayCommander} (a promo copy of the commander shown on
+ * the box) are not part of the deck.
+ *
+ * @param name the deck's name on the site
+ * @param format the closest format
  * @param commander card name to count, sorted by name
  * @param main card name to count, sorted by name
  * @param sideboard card name to count, sorted by name
- * @param outOfDeck names of the categories not counted in the deck that had cards
+ * @param outOfDeck names of the Archidekt categories not counted in the deck that had cards
  * @param outOfDeckCards how many cards those are
  * @param outOfDeckKept whether those cards are in the sideboard (otherwise they were left out)
  * @param skippedCustomCards how many custom (user-made) cards were left out
  */
-public record ArchidektDeck(String name, Format format, Map<String, Integer> commander, Map<String, Integer> main,
+public record FetchedDeck(String name, Format format, Map<String, Integer> commander, Map<String, Integer> main,
                             Map<String, Integer> sideboard, List<String> outOfDeck, int outOfDeckCards,
                             boolean outOfDeckKept, int skippedCustomCards) {
 
@@ -52,7 +59,7 @@ public record ArchidektDeck(String name, Format format, Map<String, Integer> com
     /** Layouts whose Forge name is both halves ("Fire // Ice"); other two-faced cards use the front face. */
     private static final List<String> BOTH_HALVES_LAYOUTS = List.of("split", "aftermath");
 
-    public static ArchidektDeck parse(JsonNode deck, boolean keepOutOfDeck) {
+    public static FetchedDeck fromArchidekt(JsonNode deck, boolean keepOutOfDeck) {
         Map<String, JsonNode> categories = new HashMap<>();
         for (JsonNode c : deck.path("categories")) {
             categories.put(c.path("name").asText(), c);
@@ -111,13 +118,43 @@ public record ArchidektDeck(String name, Format format, Map<String, Integer> com
             target.merge(cardName, quantity, Integer::sum);
         }
 
-        return new ArchidektDeck(deck.path("name").asText("").strip(), formatOf(deck), commander, main, sideboard,
+        return new FetchedDeck(deck.path("name").asText("").strip(), archidektFormat(deck), commander, main, sideboard,
                 List.copyOf(outOfDeck), outOfDeckCards, keepOutOfDeck, deck.path("customCards").size());
     }
 
     /** The closest format to the Archidekt deck's: Commander for Commander decks, otherwise constructed. */
-    public static Format formatOf(JsonNode deck) {
+    public static Format archidektFormat(JsonNode deck) {
         return deck.path("deckFormat").asInt(-1) == ARCHIDEKT_COMMANDER ? Format.COMMANDER : Format.CONSTRUCTED;
+    }
+
+    /**
+     * @param data the {@code data} object of an MTGJSON deck file ({@code api/v5/decks/<fileName>.json})
+     */
+    public static FetchedDeck fromMtgjson(JsonNode data) {
+        Map<String, Integer> commander = mtgjsonSection(data.path("commander"));
+        Map<String, Integer> main = mtgjsonSection(data.path("mainBoard"));
+        Map<String, Integer> sideboard = mtgjsonSection(data.path("sideBoard"));
+        Format format = !commander.isEmpty() || data.path("type").asText("").toLowerCase(Locale.ROOT).contains("commander")
+                ? Format.COMMANDER : Format.CONSTRUCTED;
+        return new FetchedDeck(data.path("name").asText("").strip(), format, commander, main, sideboard, List.of(), 0,
+                false, 0);
+    }
+
+    private static Map<String, Integer> mtgjsonSection(JsonNode cards) {
+        Map<String, Integer> section = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (JsonNode card : cards) {
+            int count = card.path("count").asInt(0);
+            String cardName = forgeName(card);
+            if (count > 0 && !cardName.isEmpty()) {
+                section.merge(cardName, count, Integer::sum);
+            }
+        }
+        return section;
+    }
+
+    /** True if both decks have the same cards in the same sections (names and formats aside). */
+    public boolean sameCards(FetchedDeck other) {
+        return commander.equals(other.commander) && main.equals(other.main) && sideboard.equals(other.sideboard);
     }
 
     /** The name Forge knows a card by: the front face of a two-faced card, both halves of a split card. */
@@ -137,11 +174,18 @@ public record ArchidektDeck(String name, Format format, Map<String, Integer> com
 
     /** The deck as a plain-text list that {@code mtgbench.deck.DeckLoader} reads. */
     public String toText(String sourceUrl) {
+        return toText(List.of("From " + sourceUrl));
+    }
+
+    /** @param comments lines for the header, after the deck name, each written as a "# " comment */
+    public String toText(List<String> comments) {
         StringBuilder out = new StringBuilder();
         if (!name.isEmpty()) {
             out.append("# ").append(oneLine(name)).append('\n');
         }
-        out.append("# From ").append(sourceUrl).append('\n');
+        for (String c : comments) {
+            out.append("# ").append(oneLine(c)).append('\n');
+        }
         if (outOfDeckCards > 0 && outOfDeckKept) {
             out.append("# The sideboard includes ").append(outOfDeckCards)
                     .append(outOfDeckCards == 1 ? " card" : " cards")

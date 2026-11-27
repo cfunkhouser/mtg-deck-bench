@@ -15,14 +15,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import mtgbench.config.Format;
 
 /** Sorting Archidekt's JSON into deck sections, and the text written. No network, no Forge. */
-class ArchidektDeckTest {
-    private static ArchidektDeck parse(String json, boolean keepOutOfDeck) throws Exception {
-        return ArchidektDeck.parse(new ObjectMapper().readTree(json), keepOutOfDeck);
+class FetchedDeckTest {
+    private static FetchedDeck parse(String json, boolean keepOutOfDeck) throws Exception {
+        return FetchedDeck.fromArchidekt(new ObjectMapper().readTree(json), keepOutOfDeck);
     }
 
     @Test
     void sortsCardsIntoSections() throws Exception {
-        ArchidektDeck d = parse(ArchidektTestDecks.constructed(), true);
+        FetchedDeck d = parse(ArchidektTestDecks.constructed(), true);
         assertEquals("Test  Burn", d.name());
         assertEquals(Format.CONSTRUCTED, d.format());
         assertTrue(d.commander().isEmpty());
@@ -37,7 +37,7 @@ class ArchidektDeckTest {
 
     @Test
     void outOfDeckCardsCanBeLeftOut() throws Exception {
-        ArchidektDeck d = parse(ArchidektTestDecks.constructed(), false);
+        FetchedDeck d = parse(ArchidektTestDecks.constructed(), false);
         assertEquals(Map.of("Smash to Smithereens", 3, "Lurrus of the Dream-Den", 1), d.sideboard());
         assertEquals(2, d.outOfDeckCards());
         assertFalse(d.toText("u").contains("categories not counted"));
@@ -45,7 +45,7 @@ class ArchidektDeckTest {
 
     @Test
     void commanderDeck() throws Exception {
-        ArchidektDeck d = parse(ArchidektTestDecks.commander(), true);
+        FetchedDeck d = parse(ArchidektTestDecks.commander(), true);
         assertEquals(Format.COMMANDER, d.format());
         assertEquals(Map.of("Krenko, Mob Boss", 1), d.commander());
         assertEquals(Map.of("Village Messenger", 1, "Mountain", 40), d.main());
