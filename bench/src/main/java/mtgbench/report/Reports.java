@@ -76,6 +76,11 @@ public final class Reports {
 
     public record GamesRead(List<GameRecord> games, int truncatedLines) {}
 
+    /** Parses one line of games.jsonl. */
+    public static GameRecord parseGame(String line) throws IOException {
+        return READ_JSON.readValue(line, GameRecord.class);
+    }
+
     /** Writes games.jsonl from scratch with these records (atomically, via a temporary file). */
     public static void rewriteGames(Path file, List<GameRecord> games) throws IOException {
         Path tmp = file.resolveSibling(file.getFileName() + ".tmp");

@@ -118,6 +118,7 @@ public final class RunCommand implements Callable<Integer> {
 
         PrintStream console = ForgeOutput.redirectTo(runDir.resolve("logs").resolve("forge.log"));
         console.println("Run " + runId + " → " + runDir);
+        console.println("Watch it live from another terminal: mtgbench top " + runDir);
         console.println("Seed " + config.seed() + RunSupport.reproducibilityNote(config));
         if (!RunSupport.startForge(res, home, config.aiProfile(), console)) {
             return BenchCli.EXIT_USAGE;
