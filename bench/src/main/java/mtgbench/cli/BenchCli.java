@@ -12,7 +12,7 @@ import picocli.CommandLine.Option;
 @Command(name = "mtgbench", mixinStandardHelpOptions = true,
         versionProvider = BenchCli.Version.class,
         description = "Benchmark a Magic: The Gathering deck against opponent decks with Forge's rules engine and AI.",
-        subcommands = {RunCommand.class, ValidateCommand.class, ResumeCommand.class, ReportCommand.class,
+        subcommands = {RunCommand.class, ValidateCommand.class, FetchCommand.class, ResumeCommand.class, ReportCommand.class,
                 MergeCommand.class, ReplayCommand.class},
         exitCodeListHeading = "%nExit codes:%n",
         exitCodeList = {
@@ -31,9 +31,13 @@ public final class BenchCli {
 
     /** The configured command line, as {@link #main} runs it. */
     static CommandLine commandLine() {
-        return new CommandLine(new BenchCli())
+        CommandLine cli = new CommandLine(new BenchCli())
                 .setCaseInsensitiveEnumValuesAllowed(true)
                 .setExecutionExceptionHandler(BenchCli::handleSetupProblem);
+        // picocli exits with 2 on bad arguments, which is EXIT_DECK here. Each command reports its own.
+        cli.getCommandSpec().exitCodeOnInvalidInput(EXIT_USAGE);
+        cli.getSubcommands().values().forEach(sub -> sub.getCommandSpec().exitCodeOnInvalidInput(EXIT_USAGE));
+        return cli;
     }
 
     /**
