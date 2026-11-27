@@ -109,18 +109,34 @@ class FetchCommandTest {
     }
 
     @Test
-    void commanderDeckIsCheckedAsCommander() throws Exception {
+    void commanderDeckIsCheckedAsCommanderAndLeavesOutTheMaybeboard() throws Exception {
         Path deck = dir.resolve("goblins.txt");
         // 42 cards is too few for Commander, which shows the deck was checked as one.
         assertEquals(BenchCli.EXIT_DECK, fetch("7", deck.toString()), output() + err);
         assertTrue(output().contains("should have at least"), output());
-        assertTrue(output().contains("--no-maybeboard"), output());
+        assertTrue(output().contains("left out 1 card(s) from categories not counted in the deck: Maybeboard"
+                + " (--maybeboard keeps them in the sideboard)"), output());
         assertTrue(Files.exists(deck), "the deck is saved even when it doesn't validate");
+        assertFalse(Files.readString(deck).contains("Goblin Guide"));
 
-        assertEquals(0, fetch("--force", "--no-maybeboard", "--no-legality-check", "7", deck.toString()),
+        assertEquals(0, fetch("--force", "--maybeboard", "--no-legality-check", "7", deck.toString()),
                 output() + err);
         assertTrue(output().contains("commander: Krenko, Mob Boss"), output());
-        assertFalse(Files.readString(deck).contains("Goblin Guide"));
+        assertTrue(Files.readString(deck).contains("\nSideboard\n1 Goblin Guide\n"), Files.readString(deck));
+    }
+
+    @Test
+    void maybeboardDefaultFollowsTheFormatChecked() throws Exception {
+        Path deck = dir.resolve("goblins.txt");
+        // Checked as constructed, the Commander deck keeps its Maybeboard in the sideboard.
+        fetch("-f", "constructed", "--no-legality-check", "7", deck.toString());
+        assertTrue(Files.readString(deck).contains("1 Goblin Guide"), Files.readString(deck));
+        // And a constructed deck checked as Commander leaves it out.
+        fetch("--force", "-f", "commander", "--no-legality-check", "42", deck.toString());
+        assertFalse(Files.readString(deck).contains("Shock"), Files.readString(deck));
+        // --no-maybeboard leaves it out of a constructed deck.
+        fetch("--force", "--no-maybeboard", "--no-validate", "42", deck.toString());
+        assertFalse(Files.readString(deck).contains("Shock"), Files.readString(deck));
     }
 
     @Test

@@ -111,10 +111,13 @@ public record ArchidektDeck(String name, Format format, Map<String, Integer> com
             target.merge(cardName, quantity, Integer::sum);
         }
 
-        Format format = deck.path("deckFormat").asInt(-1) == ARCHIDEKT_COMMANDER ? Format.COMMANDER
-                : Format.CONSTRUCTED;
-        return new ArchidektDeck(deck.path("name").asText("").strip(), format, commander, main, sideboard,
+        return new ArchidektDeck(deck.path("name").asText("").strip(), formatOf(deck), commander, main, sideboard,
                 List.copyOf(outOfDeck), outOfDeckCards, keepOutOfDeck, deck.path("customCards").size());
+    }
+
+    /** The closest format to the Archidekt deck's: Commander for Commander decks, otherwise constructed. */
+    public static Format formatOf(JsonNode deck) {
+        return deck.path("deckFormat").asInt(-1) == ARCHIDEKT_COMMANDER ? Format.COMMANDER : Format.CONSTRUCTED;
     }
 
     /** The name Forge knows a card by: the front face of a two-faced card, both halves of a split card. */

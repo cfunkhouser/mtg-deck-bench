@@ -55,9 +55,9 @@ mise run mtgbench -- fetch https://archidekt.com/decks/123456/my-deck examples/d
 ```
 
 `fetch` writes the commander, main deck and sideboard as a text list, then checks it like `validate` does.
-Cards in Archidekt categories not counted in the deck, such as Maybeboard, go in the sideboard; pass
-`--no-maybeboard` to leave them out, which Commander decks usually need, since Commander legality allows
-at most 10 sideboard cards. The deck must be public.
+Cards in Archidekt categories not counted in the deck, such as Maybeboard, go in the sideboard, except in
+Commander decks, where they are left out: Commander legality allows at most 10 sideboard cards and counts
+them for singleton. `--maybeboard` and `--no-maybeboard` choose either way. The deck must be public.
 
 Every card is checked against Forge's card database, and decks are checked for format legality
 (`--no-legality-check` skips that). Options can also come from a YAML file (`--config`, see DESIGN.md §3.2).

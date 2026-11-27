@@ -458,14 +458,14 @@ Details and measurements: [phase0-findings.md](phase0-findings.md).
        `Deck` and `Sideboard` headers, card names only (Forge picks the printing). It then runs the same
        checks as `validate`, unless `--no-validate`; the file is kept even when they fail.
      - Sections come from Archidekt's categories: the premier category is the commander; cards in a category
-       not counted in the deck (Maybeboard and the like) go to the sideboard, or are left out with
-       `--no-maybeboard`; the Sideboard category and the companion go to the sideboard; the rest is the main
-       deck. Archidekt marks its Sideboard category as counted in the deck, so it is matched by name.
+       not counted in the deck (Maybeboard and the like) go to the sideboard, except when the deck is checked
+       as Commander, where they are left out (`--maybeboard` / `--no-maybeboard` override); the Sideboard
+       category and the companion go to the sideboard; the rest is the main deck. Archidekt marks its Sideboard category as counted in the deck, so it is matched by name.
      - Two-faced cards are written by their front face, split and aftermath cards by both halves, which is
        how Forge names them. Custom cards are left out with a note.
      - Checked against the 60 most viewed Archidekt Commander decks: every card name resolved in Forge. The
        only failures were real deck problems, and Maybeboards over 10 cards, which Commander legality counts
-       as a sideboard (hence `--no-maybeboard`).
+       as a sideboard (hence leaving them out for Commander by default).
    - Still to do: per-deck AI profiles, an HTML report, and Bo3 with sideboarding.
    - Commander variants such as Brawl and Oathbreaker, plus house rules (free first mulligan).
 

@@ -10,6 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
 import mtgbench.config.Format;
 import mtgbench.deck.DeckLoader;
 import mtgbench.engine.BuildProps;
@@ -31,7 +33,8 @@ import picocli.CommandLine.Spec;
                 + " 'validate' does.",
             "",
             "The commander goes under a Commander header. Cards in Archidekt's Sideboard category, the companion,"
-                + " and cards in categories not counted in the deck (such as Maybeboard) go in the sideboard."
+                + " and, except for Commander decks, cards in categories not counted in the deck (such as"
+                + " Maybeboard) go in the sideboard."
                 + " Lines carry card names only, so Forge picks the printing."})
 public final class FetchCommand implements Callable<Integer> {
     @Spec
@@ -55,11 +58,12 @@ public final class FetchCommand implements Callable<Integer> {
     @Option(names = "--force", description = "Overwrite OUT if it exists.")
     boolean force;
 
-    @Option(names = "--no-maybeboard",
-            description = "Leave out cards in categories Archidekt doesn't count in the deck (Maybeboard and the"
-                    + " like) instead of writing them to the sideboard. Commander legality allows at most 10"
-                    + " sideboard cards, and counts them for singleton.")
-    boolean noMaybeboard;
+    @Option(names = "--maybeboard", negatable = true,
+            description = "Write cards in categories Archidekt doesn't count in the deck (Maybeboard and the like)"
+                    + " to the sideboard (--maybeboard), or leave them out (--no-maybeboard). Default: left out"
+                    + " for Commander, whose legality allows at most 10 sideboard cards and counts them for"
+                    + " singleton; written otherwise.")
+    Boolean maybeboard;
 
     @Option(names = "--no-validate", description = "Only download and write; don't check the deck against Forge.")
     boolean noValidate;
@@ -83,10 +87,13 @@ public final class FetchCommand implements Callable<Integer> {
         Path home = noValidate ? null : forge.resolveHome();
 
         ArchidektDeck deck;
+        Format checkAs;
         try {
             Archidekt client = new Archidekt(api, "mtgbench/" + BuildProps.get("mtgbench.version")
                     + " (+https://github.com/cfunkhouser/mtg-deck-bench)");
-            deck = ArchidektDeck.parse(client.fetch(id), !noMaybeboard);
+            JsonNode json = client.fetch(id);
+            checkAs = format != null ? format : ArchidektDeck.formatOf(json);
+            deck = ArchidektDeck.parse(json, maybeboard != null ? maybeboard : checkAs != Format.COMMANDER);
         } catch (Archidekt.FetchException e) {
             throw new BenchCli.SetupException(e.getMessage());
         }
@@ -100,7 +107,8 @@ public final class FetchCommand implements Callable<Integer> {
         if (deck.outOfDeckCards() > 0) {
             console.println("      note: " + (deck.outOfDeckKept() ? "wrote " : "left out ") + deck.outOfDeckCards()
                     + " card(s) from categories not counted in the deck" + (deck.outOfDeckKept() ? " to the sideboard" : "")
-                    + ": " + String.join(", ", deck.outOfDeck()));
+                    + ": " + String.join(", ", deck.outOfDeck())
+                    + (deck.outOfDeckKept() ? "" : " (--maybeboard keeps them in the sideboard)"));
         }
         if (deck.skippedCustomCards() > 0) {
             console.println("      note: left out " + deck.skippedCustomCards() + " custom card(s), which Forge"
@@ -110,7 +118,6 @@ public final class FetchCommand implements Callable<Integer> {
             return 0;
         }
 
-        Format checkAs = format != null ? format : deck.format();
         console = ForgeOutput.redirectTo(home.resolve("logs").resolve("fetch.log"));
         ForgeBootstrap.init(res, home);
         boolean ok = ValidateCommand.check(new DeckLoader(checkAs, !noLegalityCheck), out, console);
@@ -118,7 +125,7 @@ public final class FetchCommand implements Callable<Integer> {
             if (checkAs == Format.COMMANDER && deck.outOfDeckKept() && deck.outOfDeckCards() > 0) {
                 console.println("The sideboard holds " + deck.outOfDeckCards() + " card(s) from "
                         + String.join(", ", deck.outOfDeck()) + ", which count against Commander legality;"
-                        + " rerun with --no-maybeboard --force to leave them out.");
+                        + " rerun without --maybeboard (and with --force) to leave them out.");
             } else {
                 console.println("The deck was saved; fix it there, or rerun with --no-legality-check if only"
                         + " legality failed.");
